@@ -2,7 +2,6 @@ const mongoose = require("mongoose");
 const Product = require("../../models/productsModel");
 const SubCategory = require("../../models/subCategoryModel");
 const Category = require("../../models/categoryModel");
-const Brand = require("../../models/brandModel");
 const { convertToObjectIds } = require("../../utils/objectIdHelper");
 
 const getAllProducts = async ({
@@ -170,37 +169,6 @@ const getAllProducts = async ({
     match.name = { $regex: search, $options: "i" };
   }
 
-  if (brands) {
-    const brandArray = Array.isArray(brands) ? brands : [brands];
-    
-    // Find brands by ID or slug
-    const brandIds = [];
-    const brandSlugs = [];
-    
-    brandArray.forEach(brand => {
-      if (mongoose.Types.ObjectId.isValid(brand)) {
-        brandIds.push(new mongoose.Types.ObjectId(brand));
-      } else {
-        brandSlugs.push(brand);
-      }
-    });
-    
-    const brandQuery = [];
-    if (brandIds.length > 0) {
-      brandQuery.push({ _id: { $in: brandIds } });
-    }
-    if (brandSlugs.length > 0) {
-      brandQuery.push({ slug: { $in: brandSlugs } });
-    }
-    
-    if (brandQuery.length > 0) {
-      const foundBrands = await Brand.find({ $or: brandQuery }, "_id");
-      if (foundBrands.length > 0) {
-        match.brand = { $in: foundBrands.map(b => b._id) };
-      }
-    }
-  }
-
   if (price_range) {
     const priceRanges = Array.isArray(price_range)
       ? price_range
@@ -315,7 +283,7 @@ const getAllProducts = async ({
 };
 
 const getProductById = async (id) => {
-  return await Product.findById(id).populate('brand');
+  return await Product.findById(id);
 };
 
 const createProduct = async (data) => {
@@ -338,7 +306,6 @@ const getProductsByAdmin = async ({ id, filters, page, per_page }) => {
   const limit = parseInt(per_page);
 
   return await Product.find({ ...filters, created_by_admin: id })
-    .populate('brand')
     .sort({
       createdAt: -1,
     })

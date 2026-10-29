@@ -1,112 +1,80 @@
-# Shagun Beauty Backend
+# QuickPoint Backend
 
-Node.js / Express / MongoDB backend for Shagun Beauty.
+Multi-Outlet Dairy E-Commerce Platform for Bihar.
+
+Node.js / Express / MongoDB backend providing outlet discovery, real-time inventory reservations, QR-code ordering, mobile OTP authentication, online payment processing, pickup OTP verification, and immutable franchise commission ledgers.
 
 ---
 
-## Shiprocket Shipping Integration
+## 🥛 Key Platform Features
 
-This backend integrates with the [Shiprocket API (v1 external)](https://apidocs.shiprocket.in/) for automated shipping fulfillment, courier serviceability checks, AWB assignment, pickup scheduling, label generation, manifest generation, tracking, and status synchronizations via webhooks.
+1. **Multi-Outlet Franchise Architecture (Bihar)**
+   - Outlets mapped with GeoJSON `Point` coordinates and `2dsphere` geospatial indexing for proximity lookups.
+   - Unique outlet QR codes and QR tokens for in-store instant ordering.
+   - Strict franchise role isolation (`centralAdmin` vs `franchiseOwner`).
 
-### 1. Required Environment Variables
+2. **Dairy Catalog & Outlet Inventory**
+   - Products with unit types (`L`, `ml`, `kg`, `g`, `pack`), shelf life, storage temperatures, and dairy categories (`milk`, `curd`, `paneer`, `ghee`, `butter`, `sweets`).
+   - Outlet-level atomic inventory reservations (`reservedStock`, `availableStock`, `physicalStock`).
 
-Add the following variables to your local `.env` file (see `env.example` for placeholders):
+3. **Customer Mobile OTP Authentication**
+   - Fast login and registration via Indian 10-digit mobile numbers with SMS OTP verification.
+   - Protected with brute-force rate limiters (3 attempts / 10 minutes).
 
-```env
-# Shiprocket Credentials
-SHIPROCKET_EMAIL=your-shiprocket-account-email@domain.com
-SHIPROCKET_PASSWORD=your-shiprocket-password
-SHIPROCKET_BASE_URL=https://apiv2.shiprocket.in/v1/external
-SHIPROCKET_PICKUP_LOCATION=Primary
-SHIPROCKET_WEBHOOK_TOKEN=your-optional-webhook-secret-token
+4. **100% Pickup-Only Fulfillment**
+   - Zero shipping fees and no delivery addresses required.
+   - 6-digit pickup verification OTP generated on order payment.
+   - Authorized franchise staff verification with atomic double-pickup prevention.
+
+5. **Online Payment & Idempotency**
+   - Razorpay standard checkout and webhook verification.
+   - Optional Cashfree gateway provider with webhook HMAC SHA256 signature verification.
+   - Idempotent payment processing: multiple webhook deliveries will not double-credit orders.
+
+6. **Immutable Commission Ledger**
+   - Financial snapshots captured at the exact moment of order payment (`franchiseCut`, `companyCut`, `franchiseRate`, `companyRate`).
+   - Subsequent rate changes in store settings do not affect historical orders or accounting.
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js `v20+`
+- MongoDB `v6.0+` with Replica Set (for GeoJSON indexing & transactions)
+
+### Installation
+```bash
+git clone <repo-url>
+cd thequickpointbe
+npm install
 ```
 
-> **Security Note:** Never commit real credentials or passwords to version control. Passwords and bearer tokens are never logged or exposed in client responses.
-
----
-
-### 2. How Authentication & Token Management Works
-
-- The backend logs in to Shiprocket via `POST /auth/login` using `SHIPROCKET_EMAIL` and `SHIPROCKET_PASSWORD`.
-- The access token is cached securely server-side in memory with expiration tracking.
-- All subsequent calls reuse the cached token.
-- If Shiprocket returns `401 Unauthorized` (token expired), the service automatically invalidates the cached token, logs in to obtain a fresh token, and retries the request seamlessly.
-- Tokens and passwords are never returned in API responses or printed to logs.
-
----
-
-### 3. Order Flow & Synchronization
-
-1. **Order Creation in MongoDB:**
-   - Shagun Beauty Customer places an order via app or website (stored in MongoDB).
-2. **Admin Creates Shipment:**
-   - Admin triggers `POST /api/order/:orderId/shiprocket/create`.
-   - The backend validates the order, maps customer address and item snapshots to the Shiprocket format, and calls `POST /orders/create/adhoc`.
-   - Resulting `shiprocketOrderId`, `shipmentId`, and `status` are saved to `Order.shipping`.
-3. **Idempotency & Duplicate Protection:**
-   - Before creating a Shiprocket order, the system checks whether `shipping.shiprocketOrderId` is already present.
-   - If present, no duplicate order is sent to Shiprocket.
-   - The same idempotency guarantees apply to AWB assignment (`shipping.awbCode`) and pickup generation (`shipping.pickupScheduledAt`).
-4. **Failure Recovery:**
-   - If Shiprocket API is temporarily down, customer order placement is never rolled back or broken.
-   - The error is recorded under `order.shipping.error`, and admins can retry synchronization at any time using `POST /api/order/:id/shiprocket/create`.
-
----
-
-### 4. Admin Shipping Endpoints
-
-All admin shipping routes are protected with `adminOrSuperAdmin` JWT role authentication (`Authorization: Bearer <token>`).
-
-| Method   | Endpoint                                     | Description                               | Request Body / Query                                                  |
-| -------- | -------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------- |
-| `GET`  | `/api/order/shiprocket/serviceability`     | Check available couriers & ETAs           | Query:`pickup_postcode`, `delivery_postcode`, `weight`, `cod` |
-| `GET`  | `/api/order/:id/shiprocket/serviceability` | Check serviceability using order pincode  | Query:`pickup_postcode` (optional)                                  |
-| `PATCH`| `/api/order/:id/shipping-package`          | Set package dimensions (weight, L, B, H)  | Body: `{ "weight": 5, "length": 20, "breadth": 30, "height": 30 }`     |
-| `POST` | `/api/order/:id/shiprocket/create`         | Sync / create order in Shiprocket         | Body: `{ "weight": 0.5, "length": 10, "breadth": 10, "height": 5, "pickup_location": "Shagun Beauty" }` |
-| `POST` | `/api/order/:id/shiprocket/assign-awb`     | Assign courier & generate AWB code        | Body:`{ "courier_id": 123 }` (optional)                             |
-| `POST` | `/api/order/:id/shiprocket/pickup`         | Schedule pickup with courier              | Body:`{ "pickup_date": "YYYY-MM-DD" }` (optional)                   |
-| `POST` | `/api/order/:id/shiprocket/label`          | Generate shipping label PDF URL           | None                                                                  |
-| `POST` | `/api/order/:id/shiprocket/manifest`       | Generate shipment manifest                | None                                                                  |
-| `POST` | `/api/order/:id/shiprocket/print-manifest` | Print shipment manifest                   | None                                                                  |
-| `GET`  | `/api/order/:id/shiprocket/tracking`       | Get live tracking details from Shiprocket | None                                                                  |
-| `POST` | `/api/order/:id/shiprocket/cancel`         | Cancel shipment/order in Shiprocket       | None                                                                  |
-
----
-
-### 5. Webhook Notifications
-
-Shiprocket push notifications for tracking and status updates are received at:
-
-```http
-POST /api/webhook/shiprocket
+### Environment Configuration
+Copy `env.example` to `.env` and fill in credentials:
+```bash
+cp env.example .env
 ```
-
-- **Authentication:** Validates `SHIPROCKET_WEBHOOK_TOKEN` via `x-api-key`, `Authorization: Bearer <token>`, or query param `?token=...` if configured.
-- **Processing:** Locates order by AWB code, shipment ID, or order ID.
-- **Status Sync:** Automatically synchronizes statuses (e.g. `shipped`, `out_for_delivery`, `delivered`, `returned`, `cancelled`) and triggers customer email notifications when status changes.
-- **Idempotency:** Repeated webhook deliveries are safely processed without duplicating side effects.
-
----
-
-## Multi-Outlet Dairy E-Commerce Platform (Bihar)
-
-This backend repository includes a multi-outlet dairy e-commerce system tailored for Bihar, featuring:
-- **Dairy Products & Categories:** Milk, curd, ghee, paneer, and configurable dairy subcategories.
-- **Customer Mobile OTP:** SMS-based OTP login & registration (`POST /api/auth/user/send-otp` & `POST /api/auth/user/verify-otp`) with rate limiting.
-- **Location-Based Outlet Selection:** MongoDB GeoJSON `2dsphere` proximity queries (`GET /api/dairy/outlets/nearby`) within configurable radius.
-- **Outlet QR Ordering:** Unique QR codes and public URLs per outlet (`GET /api/dairy/outlets/qr/:token`) locking the outlet selection and checking real-time stock.
-- **Pickup Only:** Dairy checkout requires no delivery address and charges zero shipping.
-- **Safe Inventory Reservation:** Atomic reservation at checkout (`$inc: { reserved_quantity: qty }`) preventing overselling under concurrent requests, with automatic release on cancellation/failure.
-- **Pickup OTP Verification:** Outlet staff validates pickup with a 6-digit OTP, atomically marking pickup, accruing commission, and sending SMS confirmation. Duplicate pickups are rejected.
-- **Immutable Commission Snapshots:** Snapshots stored on orders; rate updates in StoreSettings never alter historical earnings.
-- **RBAC:** Strict isolation ensuring Franchise Owners (`franchise_owner`) can only access their outlet's inventory, orders, and pickups. Central Admin manages all outlets and settings.
-- **Payment Gateways:** Razorpay verification and optional Cashfree provider.
-
-### API Documentation
-For complete API references, payloads, and examples, see [`doc/dairy-platform-api.md`](doc/dairy-platform-api.md).
 
 ### Running Tests
-To run the full automated test suite:
+Run the automated multi-outlet dairy test suite:
 ```bash
 npm test
 ```
+
+### Running the Server
+```bash
+# Development (with nodemon)
+npm run dev
+
+# Production
+npm start
+```
+
+---
+
+## 📖 API Documentation
+Detailed API endpoints and request/response specifications are documented in:
+- [Complete API Reference Manual](file:///Users/sayemkalim/Desktop/thequickpointbe/doc/API_REFERENCE.md) (All 150+ Endpoints)
+- [Multi-Outlet Dairy API Documentation](file:///Users/sayemkalim/Desktop/thequickpointbe/doc/dairy-platform-api.md)
+- Interactive Swagger UI: `http://localhost:5000/api-doc`

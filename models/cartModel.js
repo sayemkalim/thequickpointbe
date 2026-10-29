@@ -11,18 +11,13 @@ const CartSchema = new mongoose.Schema(
       {
         type: {
           type: String,
-          enum: ["product", "bundle"],
-          required: true,
+          enum: ["product"],
+          default: "product",
         },
         product: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Product",
-          required: function() { return this.type === "product"; },
-        },
-        bundle: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "Bundle",
-          required: function() { return this.type === "bundle"; },
+          required: true,
         },
         variant_sku: {
           type: String,

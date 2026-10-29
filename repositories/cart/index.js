@@ -18,14 +18,6 @@ const populateCart = async (cart) => {
       path: "items.product",
       select: CART_PRODUCT_FIELDS,
     },
-    {
-      path: "items.bundle",
-      populate: {
-        path: "products.product",
-        model: "Product",
-        select: CART_BUNDLE_PRODUCT_FIELDS,
-      },
-    },
   ]);
 };
 
@@ -40,14 +32,6 @@ const getCartByUserId = async ({ user_id }) => {
       .populate({
         path: "items.product",
         select: CART_PRODUCT_FIELDS,
-      })
-      .populate({
-        path: "items.bundle",
-        populate: {
-          path: "products.product",
-          model: "Product",
-          select: CART_BUNDLE_PRODUCT_FIELDS,
-        },
       });
   }
 
@@ -55,14 +39,6 @@ const getCartByUserId = async ({ user_id }) => {
     .populate({
       path: "items.product",
       select: CART_PRODUCT_FIELDS,
-    })
-    .populate({
-      path: "items.bundle",
-      populate: {
-        path: "products.product",
-        model: "Product",
-        select: CART_BUNDLE_PRODUCT_FIELDS,
-      },
     });
 };
 

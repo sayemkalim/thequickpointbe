@@ -2,7 +2,6 @@ const { asyncHandler } = require("../../common/asyncHandler.js");
 const ApiResponse = require("../../utils/ApiResponse.js");
 const CartService = require("../../services/cart/index.js");
 const CouponService = require("../../services/coupon/index.js");
-const { calculateShippingCost } = require("../../utils/shipping/calculateShipping.js");
 const Inventory = require("../../models/inventoryModel.js");
 const { getAvailableStock } = require("../../utils/inventory/getAvailableStock.js");
 const { CartPerfTracker } = require("../../utils/performance/cartPerf.js");
@@ -22,14 +21,8 @@ const getCart = asyncHandler(async (req, res) => {
 
     const cartTotalPrice = cart?.total_price || 0;
 
-    // Orders under ₹2000 incur a flat ₹50 shipping charge
-    let shippingCharge = 0;
-    if (cart && cart.items && cart.items.length > 0) {
-      const shippingRes = await perf.track("shipping_calc_ms", () =>
-        calculateShippingCost(cartTotalPrice)
-      );
-      shippingCharge = shippingRes.shippingCost;
-    }
+    // QuickPoint pickup orders have zero shipping charge
+    const shippingCharge = 0;
 
     // Validate coupon (if provided) against the cart's item total, before shipping
     let couponInfo = null;

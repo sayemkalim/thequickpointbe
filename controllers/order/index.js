@@ -7,12 +7,10 @@ const Address = require("../../models/addressModel");
 const Product = require("../../models/productsModel");
 const Order = require("../../models/orderModel");
 const Category = require("../../models/categoryModel");
-const Bundle = require("../../models/bundleModel");
 const User = require("../../models/userModel");
-const {
-  calculateShippingCost,
-  calculateShippingByZone,
-} = require("../../utils/shipping/calculateShipping");
+// Dummy shipping helpers (QuickPoint is 100% pickup)
+const calculateShippingCost = async () => ({ shippingCost: 0, shippingDetails: null });
+const calculateShippingByZone = async () => ({ shippingCost: 0, shippingDetails: null });
 const {
   sendOrderConfirmationEmails,
   sendStatusUpdateEmails,
@@ -29,7 +27,6 @@ const Inventory = require("../../models/inventoryModel");
 const razorpay = require("../../config/razorpay");
 const InventoryService = require("../../services/inventory/index.js");
 const CouponService = require("../../services/coupon/index.js");
-const CodSettingsService = require("../../services/cod_settings/index.js");
 const { getAvailableStock } = require("../../utils/inventory/getAvailableStock.js");
 const {
   getProductQuantityOptions,
@@ -41,6 +38,9 @@ const fs = require("fs/promises");
 const { uploadPDF } = require("../../utils/upload");
 const { buildOrderBillPdfBuffer } = require("../../utils/pdf/orderBill.js");
 const ShiprocketService = require("../../services/shiprocket/index.js");
+
+// Bundle model compatibility shim for legacy order historical queries
+const Bundle = { findById: async () => null, find: async () => [] };
 
 // Idempotently syncs an order with Shiprocket to create a shipping order.
 // Does not throw — records error on order and logs sanitized message if failure occurs.
@@ -140,7 +140,6 @@ const syncOrderToShiprocket = async (order, { packageDetails = null, pickupLocat
     };
   }
 };
-
 
 // Idempotently generates + uploads the order's invoice PDF (skipped if
 // order.billUrl is already set) and persists the resulting URL on the order.
@@ -485,444 +484,15 @@ const getAllOrders = asyncHandler(async (req, res) => {
 });
 
 const createGuestOrder = asyncHandler(async (req, res) => {
-  const { items, address, paymentMode, utr_number } = req.body;
-
-  // Validate items
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    return res
-      .status(400)
-      .json(
-        new ApiResponse(
-          400,
-          null,
-          "Items array is required and cannot be empty",
-          false,
-        ),
-      );
-  }
-
-  if (!["COD", "UPI", "ONLINE"].includes(paymentMode)) {
-    return res
-      .status(400)
-      .json(
-        new ApiResponse(
-          400,
-          null,
-          "paymentMode must be 'COD', 'UPI', or 'ONLINE'",
-          false,
-        ),
-      );
-  }
-
-  // Validate address
-  if (
-    !address ||
-    !address.name ||
-    !address.mobile ||
-    !address.pincode ||
-    !address.city ||
-    !address.state
-  ) {
-    return res
-      .status(400)
-      .json(
-        new ApiResponse(
-          400,
-          null,
-          "Address with name, mobile, pincode, city, and state is required",
-          false,
-        ),
-      );
-  }
-
-  let totalAmount = 0;
-  let discountedTotalAmount = 0;
-  let totalWeightGrams = 0;
-  const orderItems = [];
-  const outOfStockItems = [];
-
-  for (const item of items) {
-    const quantity = Number(item.quantity) || 1;
-    if (item.type === "product") {
-      if (
-        !item.product_id ||
-        !mongoose.Types.ObjectId.isValid(item.product_id)
-      ) {
-        return res
-          .status(400)
-          .json(
-            new ApiResponse(
-              400,
-              null,
-              `Invalid product_id: ${item.product_id}`,
-              false,
-            ),
-          );
-      }
-
-      const stockCheck = await checkProductStock(
-        item.product_id,
-        item.variant_sku,
-        quantity
-      );
-
-      if (!stockCheck.found) {
-        return res
-          .status(400)
-          .json(
-            new ApiResponse(
-              400,
-              null,
-              `Product not found: ${item.product_id}`,
-              false,
-            ),
-          );
-      }
-
-      if (!stockCheck.isAvailable) {
-        outOfStockItems.push({
-          productId: stockCheck.productId,
-          variantId: stockCheck.variantId,
-          productName: stockCheck.productName,
-          requestedQuantity: quantity,
-          availableStock: stockCheck.availableStock,
-        });
-        continue;
-      }
-
-      const { orderItem, itemTotal, discountedItemTotal, weightTotal } = resolveProductOrderItem(
-        stockCheck.product,
-        quantity,
-        item.variant_sku
-      );
-      totalAmount += itemTotal;
-      discountedTotalAmount += discountedItemTotal;
-      totalWeightGrams += weightTotal;
-      orderItems.push(orderItem);
-    } else if (item.type === "bundle") {
-      if (!item.bundle_id || !mongoose.Types.ObjectId.isValid(item.bundle_id)) {
-        return res
-          .status(400)
-          .json(
-            new ApiResponse(
-              400,
-              null,
-              `Invalid bundle_id: ${item.bundle_id}`,
-              false,
-            ),
-          );
-      }
-
-      const bundle = await Bundle.findById(item.bundle_id);
-      if (!bundle) {
-        return res
-          .status(400)
-          .json(
-            new ApiResponse(
-              400,
-              null,
-              `Bundle not found: ${item.bundle_id}`,
-              false,
-            ),
-          );
-      }
-
-      let bundleOutOfStock = false;
-      if (bundle.products && Array.isArray(bundle.products)) {
-        for (const bundleProduct of bundle.products) {
-          const compQty = (bundleProduct.quantity || 1) * quantity;
-          const compCheck = await checkProductStock(
-            bundleProduct.product,
-            bundleProduct.variant_sku,
-            compQty
-          );
-          if (!compCheck.isAvailable) {
-            bundleOutOfStock = true;
-            outOfStockItems.push({
-              productId: compCheck.productId,
-              variantId: compCheck.variantId,
-              productName: `${bundle.name} - ${compCheck.productName}`,
-              requestedQuantity: compQty,
-              availableStock: compCheck.availableStock,
-            });
-          }
-        }
-      }
-
-      if (bundleOutOfStock) {
-        continue;
-      }
-
-      const price = parseFloat(bundle.price.toString());
-      const discountedPrice = bundle.discounted_price
-        ? parseFloat(bundle.discounted_price.toString())
-        : price;
-      const itemTotal = price * quantity;
-      const discountedItemTotal = discountedPrice * quantity;
-      totalAmount += itemTotal;
-      discountedTotalAmount += discountedItemTotal;
-
-      // Calculate weight for bundles - sum up all products in the bundle
-      if (bundle.products && Array.isArray(bundle.products)) {
-        for (const bundleProduct of bundle.products) {
-          const product = await Product.findById(bundleProduct.product);
-          if (product && product.weight_in_grams) {
-            totalWeightGrams +=
-              product.weight_in_grams * bundleProduct.quantity * quantity;
-          }
-        }
-      }
-
-      orderItems.push({
-        type: "bundle",
-        bundle: {
-          _id: bundle._id,
-          name: bundle.name,
-          price: bundle.price,
-          discounted_price: bundle.discounted_price,
-          images: bundle.images,
-          description: bundle.description,
-          products: bundle.products,
-        },
-        quantity: quantity,
-        total_amount: itemTotal,
-        discounted_total_amount: discountedItemTotal,
-      });
-    } else {
-      return res
-        .status(400)
-        .json(
-          new ApiResponse(
-            400,
-            null,
-            `Invalid item type: ${item.type}. Must be 'product' or 'bundle'`,
-            false,
-          ),
-        );
-    }
-  }
-
-  if (outOfStockItems.length > 0) {
-    const firstItemName = outOfStockItems[0].productName;
-    return res.status(400).json({
-      success: false,
-      message: `Item "${firstItemName}" is currently out of stock or requested quantity is unavailable.`,
-      outOfStockItems,
-    });
-  }
-
-  if (orderItems.length === 0) {
-    return res
-      .status(400)
-      .json(new ApiResponse(400, null, "No valid items found", false));
-  }
-
-  // Create address snapshot
-  const addressSnapshot = {
-    name: address.name,
-    mobile: address.mobile,
-    pincode: address.pincode,
-    locality: address.locality || "",
-    address: address.address || "",
-    city: address.city,
-    state: address.state,
-    landmark: address.landmark || "",
-    alternatePhone: address.alternatePhone || "",
-    addressType: address.addressType || "home",
-  };
-
-  // Dynamic shipping cost by zone and pincode
-  const { shippingCost, shippingDetails } = await calculateShippingCost(
-    discountedTotalAmount,
-    addressSnapshot?.pincode,
-    totalWeightGrams,
-  );
-
-  // Calculate base total amount (discounted total + shipping)
-  let cod_charge = 0;
-
-  // Validate COD rules
-  if (paymentMode === "COD") {
-    const codCheck = await CodSettingsService.checkEligibility({
-      pincode: addressSnapshot.pincode,
-      amount: discountedTotalAmount + shippingCost,
-    });
-
-    if (!codCheck.eligible) {
-      return res
-        .status(400)
-        .json(
-          new ApiResponse(
-            400,
-            null,
-            codCheck.reason || "Cash on Delivery is not available for this order.",
-            false,
-          ),
-        );
-    }
-
-    cod_charge = codCheck.cod_charge || 0;
-  }
-
-  // Calculate final total amount (discounted total + shipping + cod_charge)
-  const finalTotalAmount = discountedTotalAmount + shippingCost + cod_charge;
-
-  const order = new Order({
-    user: null,
-    isGuestOrder: true,
-    guestInfo: {
-      email: address.email || null,
-      name: address.name,
-      mobile: address.mobile,
-    },
-    items: orderItems,
-    address: addressSnapshot,
-    totalAmount,
-    discountedTotalAmount,
-    shippingCost,
-    shippingDetails,
-    cod_charge,
-    finalTotalAmount,
-    paymentMode,
-    utr_number: utr_number || null,
-    status: "pending",
-  });
-  await order.save();
-
-  // Deduct inventory asynchronously (non-blocking, best-effort)
-  InventoryService.deductForOrder(order).catch((error) =>
-    console.error(`Inventory deduction failed for order ${order._id}:`, error.message),
-  );
-
-  // Mark email as queued initially
-  order.emailTracking = {
-    confirmation: {
-      status: "queued",
-      queuedAt: new Date(),
-      attempts: 0,
-    },
-    statusUpdates: [],
-  };
-  await order.save();
-
-  // Send emails asynchronously (non-blocking) - only if guest email is provided
-  if (address.email) {
-    (async () => {
-      try {
-        // Create guest user object for email template
-        const guestUser = {
-          name: address.name,
-          email: address.email,
-        };
-
-        // Send customer email
-        const customerHtmlContent = generateCustomerOrderConfirmation(
-          order.toObject(),
-          guestUser,
-        );
-
-        const customerEmailOptions = {
-          to: address.email,
-          subject: `Order Received - ${order._id}`,
-          html: customerHtmlContent,
-        };
-
-        const customerEmailSent = await sendEmail(customerEmailOptions);
-
-        if (customerEmailSent.success) {
-          console.log(
-            "✅ Guest order confirmation email sent successfully to customer",
-          );
-          order.emailTracking.confirmation.status = "sent";
-          order.emailTracking.confirmation.sentAt = new Date();
-          await order.save();
-        }
-
-        // Send admin email
-        const admins = await Admin.find({
-          role: { $in: ["super_admin", "admin"] },
-        }).select("email");
-
-        const adminEmails = admins.map((admin) => admin.email).filter(Boolean);
-
-        if (adminEmails.length > 0) {
-          const adminHtmlContent = generateCompanyOrderNotification(
-            order.toObject(),
-            guestUser,
-          );
-          const adminEmailOptions = {
-            to: 'helpshagunbeauty@gmail.com', 
-            subject: `🛒 Order #${order.orderNumber} - ${new Date().toLocaleDateString('en-IN', {day: 'numeric', month: 'long', year: 'numeric'})} - ₹${order.finalTotalAmount} from ${order.address?.city}, ${order.address?.state}`,
-            html: adminHtmlContent,
-          };
-
-          const adminEmailSent = await sendEmail(adminEmailOptions);
-
-          if (adminEmailSent.success) {
-            console.log(
-              "✅ New guest order notification sent successfully to admin",
-            );
-          } else {
-            console.error(
-              "❌ Failed to send new guest order notification to admin",
-            );
-          }
-        }
-      } catch (error) {
-        console.error(
-          "❌ Failed to send guest order confirmation email:",
-          error.message,
-        );
-        order.emailTracking.confirmation.status = "failed";
-        order.emailTracking.confirmation.failedAt = new Date();
-        order.emailTracking.confirmation.error = error.message;
-        await order.save();
-      }
-    })();
-  } else {
-    // Still send admin notification even if no guest email
-    (async () => {
-      try {
-        const admins = await Admin.find({
-          role: { $in: ["super_admin", "admin"] },
-        }).select("email");
-
-        const adminEmails = admins.map((admin) => admin.email).filter(Boolean);
-
-        if (adminEmails.length > 0) {
-          const guestUser = {
-            name: address.name,
-            email: "No email provided",
-          };
-
-          const adminHtmlContent = generateCompanyOrderNotification(
-            order.toObject(),
-            guestUser,
-          );
-          const adminEmailOptions = {
-            to: 'helpshagunbeauty@gmail.com',
-            subject: `🛒 Order #${order.orderNumber} - ${new Date().toLocaleDateString('en-IN', {day: 'numeric', month: 'long', year: 'numeric'})} - ₹${order.finalTotalAmount} from ${order.address?.city}, ${order.address?.state}`,
-            html: adminHtmlContent,
-          };
-
-          await sendEmail(adminEmailOptions);
-          console.log(
-            "✅ New guest order notification sent successfully to admin",
-          );
-        }
-      } catch (error) {
-        console.error(
-          "❌ Failed to send admin notification for guest order:",
-          error.message,
-        );
-      }
-    })();
-  }
-
   return res
-    .status(201)
+    .status(403)
     .json(
-      new ApiResponse(201, order, "Guest order created successfully", true),
+      new ApiResponse(
+        403,
+        null,
+        "Guest checkout is disabled. Please authenticate via mobile OTP before placing an order.",
+        false
+      )
     );
 });
 
@@ -1102,77 +672,6 @@ const prepareCartOrderData = async ({
       totalWeightGrams += weightTotal;
       orderItems.push(orderItem);
       if (cartItem._id) processedCartItemIds.push(cartItem._id.toString());
-    } else if (cartItem.type === "bundle") {
-      const bundle = await Bundle.findById(cartItem.bundle);
-      if (!bundle) {
-        const err = new Error(`Bundle not found: ${cartItem.bundle}`);
-        err.statusCode = 400;
-        throw err;
-      }
-
-      let bundleOutOfStock = false;
-      if (bundle.products && Array.isArray(bundle.products)) {
-        for (const bundleProduct of bundle.products) {
-          const compQty = (bundleProduct.quantity || 1) * requestedQty;
-          const compCheck = await checkProductStock(
-            bundleProduct.product,
-            bundleProduct.variant_sku,
-            compQty
-          );
-          if (!compCheck.isAvailable) {
-            bundleOutOfStock = true;
-            outOfStockItems.push({
-              productId: compCheck.productId,
-              variantId: compCheck.variantId,
-              productName: `${bundle.name} - ${compCheck.productName}`,
-              requestedQuantity: compQty,
-              availableStock: compCheck.availableStock,
-            });
-          }
-        }
-      }
-
-      if (bundleOutOfStock) {
-        continue;
-      }
-
-      const price = parseFloat(bundle.price.toString());
-      const discountedPrice = bundle.discounted_price
-        ? parseFloat(bundle.discounted_price.toString())
-        : price;
-      const itemTotal = price * requestedQty;
-      const discountedItemTotal = discountedPrice * requestedQty;
-      totalAmount += itemTotal;
-      discountedTotalAmount += discountedItemTotal;
-
-      if (bundle.products && Array.isArray(bundle.products)) {
-        for (const bundleProduct of bundle.products) {
-          const product = await Product.findById(bundleProduct.product);
-          if (product && product.weight_in_grams) {
-            totalWeightGrams +=
-              product.weight_in_grams *
-              bundleProduct.quantity *
-              requestedQty;
-          }
-        }
-      }
-
-      orderItems.push({
-        type: "bundle",
-        bundle: {
-          _id: bundle._id,
-          name: bundle.name,
-          price: bundle.price,
-          discounted_price: bundle.discounted_price,
-          images: bundle.images,
-          description: bundle.description,
-          products: bundle.products,
-        },
-        quantity: requestedQty,
-        total_amount: itemTotal,
-        discounted_total_amount: discountedItemTotal,
-      });
-      if (cartItem._id) processedCartItemIds.push(cartItem._id.toString());
     }
   }
 
@@ -1286,31 +785,22 @@ const createOrder = asyncHandler(async (req, res) => {
       .json(new ApiResponse(400, null, err.message, false));
   }
 
-  // Validate COD rules and calculate COD charge
-  let cod_charge = 0;
+  // COD is disabled for QuickPoint pickup orders
   if (paymentMode === "COD") {
-    const codCheck = await CodSettingsService.checkEligibility({
-      pincode: summary.addressSnapshot ? summary.addressSnapshot.pincode : null,
-      amount: summary.finalTotalAmount,
-    });
-
-    if (!codCheck.eligible) {
-      return res
-        .status(400)
-        .json(
-          new ApiResponse(
-            400,
-            null,
-            codCheck.reason || "Cash on Delivery is not available for this order.",
-            false,
-          ),
-        );
-    }
-
-    cod_charge = codCheck.cod_charge || 0;
+    return res
+      .status(400)
+      .json(
+        new ApiResponse(
+          400,
+          null,
+          "Cash on Delivery (COD) is disabled for QuickPoint pickup orders. Please choose ONLINE or UPI payment.",
+          false,
+        ),
+      );
   }
 
-  const finalPayableAmount = summary.finalTotalAmount + cod_charge;
+  const cod_charge = 0;
+  const finalPayableAmount = summary.finalTotalAmount;
 
   const order = new Order({
     user: userId,

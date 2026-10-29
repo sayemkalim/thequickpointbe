@@ -78,16 +78,6 @@ const ProductSchema = new mongoose.Schema(
       min: 0,
       default: null,
     },
-    color: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-    color_name: {
-      type: String,
-      trim: true,
-      default: null,
-    },
     manufacturer: {
       type: String,
     },
@@ -109,24 +99,7 @@ const ProductSchema = new mongoose.Schema(
       of: mongoose.Schema.Types.Mixed,
       default: {},
     },
-    brand: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Brand",
-      required: false,
-    },
     is_best_seller: {
-      type: Boolean,
-      default: false,
-    },
-    is_imported_picks: {
-      type: Boolean,
-      default: false,
-    },
-    is_bakery: {
-      type: Boolean,
-      default: false,
-    },
-    celiacFriendly: {
       type: Boolean,
       default: false,
     },
@@ -189,8 +162,6 @@ const ProductSchema = new mongoose.Schema(
         is_out_of_stock: { type: Boolean, default: false },
         status: { type: String, default: "published" },
         images: [String],
-        color: { type: String, trim: true, default: null },
-        color_name: { type: String, trim: true, default: null },
         weight_in_grams: { type: Number, min: 0, default: null },
         expiry_date: { type: Date, default: null },
         price_tiers: [

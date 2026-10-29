@@ -4,14 +4,14 @@ const Counter = require("./counterModel.js");
 const OrderItemSchema = new mongoose.Schema({
   type: {
     type: String,
-    enum: ["product", "bundle"],
-    required: true,
+    enum: ["product"],
+    default: "product",
   },
   product: {
     type: new mongoose.Schema({
       _id: {
         type: mongoose.Schema.Types.ObjectId,
-        required: function() { return this.type === "product"; }
+        required: true,
       },
       name: String,
       price: mongoose.Schema.Types.Decimal128,
@@ -20,29 +20,10 @@ const OrderItemSchema = new mongoose.Schema({
       image: String,
       images: [String],
       sub_category: mongoose.Schema.Types.ObjectId,
+      isDairy: Boolean,
+      unit: String,
     }),
-    required: function() { return this.type === "product"; }
-  },
-  bundle: {
-    type: new mongoose.Schema({
-      _id: {
-        type: mongoose.Schema.Types.ObjectId,
-        required: function() { return this.type === "bundle"; }
-      },
-      name: String,
-      price: mongoose.Schema.Types.Decimal128,
-      discounted_price: mongoose.Schema.Types.Decimal128,
-      images: [String],
-      description: String,
-      products: [
-        {
-          product: mongoose.Schema.Types.ObjectId,
-          variant_sku: String,
-          quantity: Number,
-        }
-      ],
-    }),
-    required: function() { return this.type === "bundle"; }
+    required: true,
   },
   variant_sku: {
     type: String,
@@ -318,10 +299,6 @@ const OrderSchema = new mongoose.Schema({
       type: String,
       default: null
     }
-  },
-  cod_charge: {
-    type: mongoose.Schema.Types.Decimal128,
-    default: 0
   },
   finalTotalAmount: {
     type: mongoose.Schema.Types.Decimal128,

@@ -1,6 +1,5 @@
 const { default: mongoose } = require("mongoose");
 const SubCategory = require("../../models/subCategoryModel.js");
-const Brand = require("../../models/brandModel.js");
 const ProductsRepository = require("../../repositories/product/index.js");
 const Product = require("../../models/productsModel.js");
 const Order = require("../../models/orderModel.js");
@@ -216,35 +215,7 @@ const findSubCategory = async (subCategoryValue) => {
   return null;
 };
 
-// Helper function to find brand by name or ID
-const findBrand = async (brandValue) => {
-  if (!brandValue) {
-    return null;
-  }
-
-  // If it's already a valid ObjectId, return it
-  if (mongoose.Types.ObjectId.isValid(brandValue)) {
-    const brand = await Brand.findById(brandValue);
-    if (brand) {
-      return brand._id;
-    }
-  }
-
-  // If it's a string, try to find by name (case-insensitive)
-  const brandName = brandValue.toString().trim();
-  if (brandName) {
-    const brand = await Brand.findOne({
-      name: { $regex: new RegExp(`^${brandName}$`, 'i') },
-      is_active: true
-    });
-    
-    if (brand) {
-      return brand._id;
-    }
-  }
-
-  return null;
-};
+const findBrand = async () => null;
 
 // Helper function to process tags field
 const processTagsField = (productData) => {
@@ -319,23 +290,7 @@ const isTemplateRow = (productData) => {
          productData.price === 0 && !productData.discounted_price;
 };
 
-// Helper function to create missing brand
-const createMissingBrand = async (brandName) => {
-  if (!brandName) return null;
-  
-  try {
-    const brand = new Brand({
-      name: brandName,
-      is_active: true
-    });
-    
-    await brand.save();
-    return brand._id;
-  } catch (error) {
-    console.error('Error creating brand:', error);
-    return null;
-  }
-};
+const createMissingBrand = async () => null;
 
 // Helper function to generate SKU from product name following industry standards
 const generateSku = async (productName, brandName = '', subCategoryName = '') => {
@@ -407,7 +362,6 @@ const getProductRecommendations = async (productId, options = {}) => {
   try {
     // Get the target product
     const targetProduct = await Product.findById(productId)
-      .populate('brand')
       .populate('sub_category');
     
     if (!targetProduct) {
@@ -419,7 +373,6 @@ const getProductRecommendations = async (productId, options = {}) => {
       _id: { $ne: productId },
       status: 'published'
     })
-    .populate('brand')
     .populate('sub_category');
 
     // Calculate recommendation scores for each product
@@ -430,12 +383,6 @@ const getProductRecommendations = async (productId, options = {}) => {
       if (product.sub_category && targetProduct.sub_category && 
           product.sub_category._id.toString() === targetProduct.sub_category._id.toString()) {
         score += 100;
-      }
-      
-      // Base score for brand match (second highest priority)
-      if (product.brand && targetProduct.brand && 
-          product.brand._id.toString() === targetProduct.brand._id.toString()) {
-        score += 80;
       }
       
       // Major impact: Best seller bonus
@@ -592,15 +539,7 @@ const bulkCreateProducts = async (products, adminId) => {
       subCategoryMap.set(sc.name.toLowerCase(), sc._id);
     });
 
-    // Batch fetch brands
-    const brands = await Brand.find({
-      name: { $in: brandNames }
-    });
-
     const brandMap = new Map();
-    brands.forEach(brand => {
-      brandMap.set(brand.name.toLowerCase(), brand._id);
-    });
 
     // Get existing SKUs mapped to product IDs for upsert
     const existingSkuProducts = await Product.find({}, 'sku').lean();
@@ -629,9 +568,8 @@ const bulkCreateProducts = async (products, adminId) => {
     if (missingLiveSkus.length > 0) {
       const flaggedProducts = await Product.find(
         { sku: { $in: missingLiveSkus } },
-        '_id name sku status inventory brand sub_category'
+        '_id name sku status inventory sub_category'
       )
-        .populate('brand', 'name')
         .populate('sub_category', 'name')
         .lean();
       results.flagged = flaggedProducts.map(p => ({
@@ -640,7 +578,6 @@ const bulkCreateProducts = async (products, adminId) => {
         sku: p.sku,
         status: p.status,
         inventory: p.inventory,
-        brand: p.brand ? { name: p.brand.name } : null,
         sub_category: p.sub_category ? { name: p.sub_category.name } : null,
       }));
     }
@@ -685,23 +622,7 @@ const processBatch = async (batch, startIndex, adminId, subCategoryMap, brandMap
       }
 
       // Find brand using pre-fetched data
-      const brandName = productData.brand || productData.manufacturer;
-      let brandId = brandMap.get(brandName?.toLowerCase());
-
-      if (!brandId && brandName) {
-        const newBrand = new Brand({ name: brandName, is_active: true });
-        const savedBrand = await newBrand.save();
-        brandId = savedBrand._id;
-        brandMap.set(brandName.toLowerCase(), brandId);
-      }
-
-      if (!brandId) {
-        throw new Error(`Brand not found and could not be created: "${brandName}". Please check the name or ID.`);
-      }
-
-      // Get brand and subcategory names for SKU generation
-      const brand = await Brand.findById(brandId);
-      const brandNameForSku = brand ? brand.name : '';
+      const brandNameForSku = productData.manufacturer || '';
       const subCategory = await SubCategory.findById(subCategoryId);
       const subCategoryNameForSku = subCategory ? subCategory.name : '';
 
@@ -749,9 +670,8 @@ const processBatch = async (batch, startIndex, adminId, subCategoryMap, brandMap
       // Set SKU
       processedProduct.sku = skuValue;
 
-      // Set subcategory and brand
+      // Set subcategory
       processedProduct.sub_category = subCategoryId;
-      processedProduct.brand = brandId;
 
       // Set manufacturer field from input data
       if (productData.manufacturer) {
@@ -766,17 +686,14 @@ const processBatch = async (batch, startIndex, adminId, subCategoryMap, brandMap
 
       // Process boolean fields
       processedProduct.is_best_seller = processBooleanField(productData, 'is_best_seller');
-      processedProduct.is_imported_picks = processBooleanField(productData, 'is_imported_picks');
-      processedProduct.is_bakery = processBooleanField(productData, 'is_bakery');
-      processedProduct.celiacFriendly = processBooleanField(productData, 'celiacFriendly');
-
-      // Process color and color_name fields
-      if (productData.color !== undefined) {
-        processedProduct.color = productData.color ? productData.color.toString().trim() : null;
+      if (productData.isDairy !== undefined) {
+        processedProduct.isDairy = processBooleanField(productData, 'isDairy');
       }
-      if (productData.color_name !== undefined || productData.colorName !== undefined) {
-        const cName = productData.color_name !== undefined ? productData.color_name : productData.colorName;
-        processedProduct.color_name = cName ? cName.toString().trim() : null;
+      if (productData.dairyCategory) {
+        processedProduct.dairyCategory = productData.dairyCategory;
+      }
+      if (productData.unit) {
+        processedProduct.unit = productData.unit;
       }
 
       // Clean up redundant fields

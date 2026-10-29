@@ -1,5 +1,5 @@
 {
-  "name": "shagun-beauty-be",
+  "name": "quickpoint-be",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
@@ -7,10 +7,10 @@
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
-  "keywords": [],
+  "keywords": ["quickpoint", "dairy", "ecommerce", "bihar", "pickup"],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "QuickPoint Multi-Outlet Dairy E-Commerce Platform Backend",
   "dependencies": {
     "@getbrevo/brevo": "^3.0.4",
     "bcryptjs": "^3.0.3",

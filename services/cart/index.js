@@ -1,7 +1,6 @@
 const Cart = require("../../models/cartModel.js");
 const CartRepository = require("../../repositories/cart/index.js");
 const ProductRepository = require("../../repositories/product/index.js");
-const BundleRepository = require("../../repositories/bundle/index.js");
 const ApiResponse = require("../../utils/ApiResponse.js");
 const {
   getProductQuantityOptions,
@@ -181,44 +180,8 @@ const updateCart = async ({
       updatedAt: new Date(),
     };
     if (variant_sku) item.variant_sku = variant_sku;
-  } else if (type === "bundle") {
-    const bundleLookupFn = async () => {
-      return await BundleRepository.getBundleById(bundle_id);
-    };
-
-    itemData = perfTracker
-      ? await perfTracker.track("product_lookup_ms", bundleLookupFn)
-      : await bundleLookupFn();
-
-    if (!itemData) {
-      throw new Error("Bundle not found");
-    }
-
-    if (!itemData.is_active) {
-      throw new Error("Bundle is not available");
-    }
-
-    let itemPrice =
-      itemData.discounted_price !== null &&
-      itemData.discounted_price !== undefined
-        ? itemData.discounted_price
-        : itemData.price;
-
-    if (isNaN(itemPrice) || itemPrice <= 0) {
-      throw new Error("Invalid bundle price");
-    }
-
-    item = {
-      type: "bundle",
-      bundle: bundle_id,
-      quantity,
-      price: itemPrice,
-      total: itemPrice * quantity,
-      addedAt: new Date(),
-      updatedAt: new Date(),
-    };
   } else {
-    throw new Error("Invalid type. Must be 'product' or 'bundle'");
+    throw new Error("Invalid type. Must be 'product'");
   }
 
   // If no cart exists yet, create it
