@@ -35,8 +35,13 @@ const secondBannerRoutes = require("./routes/secondBanner/index.js");
 const cardBannerRoutes = require("./routes/cardBanner/index.js");
 const marqueeRoutes = require("./routes/marquee/index.js");
 const codSettingsRoutes = require("./routes/cod_settings/index.js");
-const deliverySettingsRoutes = require("./routes/delivery_settings/index.js");
 const dealCampaignRoutes = require("./routes/dealCampaign/index.js");
+
+// Multi-Outlet Dairy Platform Routes
+const dairyFranchiseRoutes = require("./routes/dairy/franchiseRoutes.js");
+const dairyInventoryRoutes = require("./routes/dairy/inventoryRoutes.js");
+const dairyOrderRoutes = require("./routes/dairy/orderRoutes.js");
+const dairySettingsRoutes = require("./routes/dairy/settingsRoutes.js");
 
 // Connect DB
 connectDB();
@@ -97,6 +102,12 @@ app.use("/api/settings/delivery", deliverySettingsRoutes);
 app.use("/api/delivery-settings", deliverySettingsRoutes);
 app.use("/api/deal-campaign", dealCampaignRoutes);
 app.use("/api/deal-campaigns", dealCampaignRoutes);
+
+// Multi-Outlet Dairy Routes
+app.use("/api/dairy/outlets", dairyFranchiseRoutes);
+app.use("/api/dairy/inventory", dairyInventoryRoutes);
+app.use("/api/dairy/orders", dairyOrderRoutes);
+app.use("/api/dairy/settings", dairySettingsRoutes);
 
 app.use("/api-doc", swaggerUI.serve, swaggerUI.setup(swaggerSpec));
 

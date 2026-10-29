@@ -107,7 +107,85 @@ const OrderSchema = new mongoose.Schema({
     }
   },
   items: [OrderItemSchema],
-  address: OrderAddressSchema,
+  address: {
+    type: OrderAddressSchema,
+    default: null,
+  },
+  // Fulfillment Type: delivery (Shagun Beauty) vs pickup (Dairy)
+  fulfillmentType: {
+    type: String,
+    enum: ["delivery", "pickup"],
+    default: "delivery",
+    index: true,
+  },
+  franchise: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Franchise",
+    default: null,
+    index: true,
+  },
+  // Pickup OTP and fulfillment tracking for dairy
+  pickupOtp: {
+    type: String,
+    default: null,
+  },
+  pickupOtpExpires: {
+    type: Date,
+    default: null,
+  },
+  pickupStatus: {
+    type: String,
+    enum: ["pending", "ready_for_pickup", "picked_up", "cancelled"],
+    default: "pending",
+    index: true,
+  },
+  pickedUpAt: {
+    type: Date,
+    default: null,
+  },
+  pickedUpByStaff: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Admin",
+    default: null,
+  },
+  // Immutable Commission Snapshot for Dairy Platform
+  commissionSnapshot: {
+    rateType: {
+      type: String,
+      enum: ["percentage", "fixed_per_piece", null],
+      default: null,
+    },
+    rateValue: {
+      type: Number,
+      default: 0,
+    },
+    outletCommissionAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+    platformCommissionAmount: {
+      type: mongoose.Schema.Types.Decimal128,
+      default: 0,
+    },
+    calculatedAt: {
+      type: Date,
+      default: null,
+    },
+    breakdown: {
+      type: Array,
+      default: [],
+    },
+  },
+  // Optional Cashfree gateway identifiers
+  cashfreeOrderId: {
+    type: String,
+    default: null,
+    index: true,
+  },
+  cashfreePaymentId: {
+    type: String,
+    default: null,
+  },
   totalAmount: {
     type: mongoose.Schema.Types.Decimal128,
     required: true

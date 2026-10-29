@@ -130,10 +130,44 @@ const ProductSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // Dairy-specific platform extensions
+    isDairy: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    dairyCategory: {
+      type: String,
+      enum: ["milk", "curd", "ghee", "paneer", "butter", "sweets", "beverages", "other", null],
+      default: null,
+      index: true,
+    },
+    unit: {
+      type: String,
+      default: null, // e.g. "500ml", "1L", "200g", "500g", "1kg"
+    },
+    perPieceCommission: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    commissionPercentage: {
+      type: Number,
+      default: null,
+      min: 0,
+      max: 100,
+    },
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
+      default: null,
+    },
     sub_category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubCategory",
-      required: true,
+      required: function () {
+        return !this.isDairy;
+      },
     },
     created_by_admin: {
       type: mongoose.Schema.Types.ObjectId,

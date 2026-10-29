@@ -3687,6 +3687,26 @@ const handlePaymentWebhook = asyncHandler(async (req, res) => {
             order.status = "confirmed";
           }
 
+          if (order.fulfillmentType === "pickup") {
+            order.pickupStatus = "ready_for_pickup";
+            try {
+              const SmsService = require("../../services/sms/index");
+              const Franchise = require("../../models/franchiseModel");
+              const franchise = await Franchise.findById(order.franchise);
+              const phone = order.guestInfo?.mobile || order.user?.phone;
+              if (phone && order.pickupOtp) {
+                await SmsService.sendPickupOtp({
+                  phone,
+                  orderNumber: order.orderNumber,
+                  otp: order.pickupOtp,
+                  outletName: franchise?.name || "the dairy outlet",
+                });
+              }
+            } catch (smsErr) {
+              console.error("Webhook pickup OTP SMS failed:", smsErr.message);
+            }
+          }
+
           await order.save();
 
           try {

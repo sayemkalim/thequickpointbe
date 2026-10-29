@@ -8,8 +8,13 @@ const AdminSchema = new mongoose.Schema(
     password: { type: String, required: true },
     role: {
       type: String,
-      enum: ["super_admin", "admin", "sub_admin"],
+      enum: ["super_admin", "admin", "sub_admin", "franchise_owner"],
       default: "admin",
+    },
+    franchise: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Franchise",
+      default: null,
     },
     services: [
       {

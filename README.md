@@ -85,3 +85,28 @@ POST /api/webhook/shiprocket
 - **Processing:** Locates order by AWB code, shipment ID, or order ID.
 - **Status Sync:** Automatically synchronizes statuses (e.g. `shipped`, `out_for_delivery`, `delivered`, `returned`, `cancelled`) and triggers customer email notifications when status changes.
 - **Idempotency:** Repeated webhook deliveries are safely processed without duplicating side effects.
+
+---
+
+## Multi-Outlet Dairy E-Commerce Platform (Bihar)
+
+This backend repository includes a multi-outlet dairy e-commerce system tailored for Bihar, featuring:
+- **Dairy Products & Categories:** Milk, curd, ghee, paneer, and configurable dairy subcategories.
+- **Customer Mobile OTP:** SMS-based OTP login & registration (`POST /api/auth/user/send-otp` & `POST /api/auth/user/verify-otp`) with rate limiting.
+- **Location-Based Outlet Selection:** MongoDB GeoJSON `2dsphere` proximity queries (`GET /api/dairy/outlets/nearby`) within configurable radius.
+- **Outlet QR Ordering:** Unique QR codes and public URLs per outlet (`GET /api/dairy/outlets/qr/:token`) locking the outlet selection and checking real-time stock.
+- **Pickup Only:** Dairy checkout requires no delivery address and charges zero shipping.
+- **Safe Inventory Reservation:** Atomic reservation at checkout (`$inc: { reserved_quantity: qty }`) preventing overselling under concurrent requests, with automatic release on cancellation/failure.
+- **Pickup OTP Verification:** Outlet staff validates pickup with a 6-digit OTP, atomically marking pickup, accruing commission, and sending SMS confirmation. Duplicate pickups are rejected.
+- **Immutable Commission Snapshots:** Snapshots stored on orders; rate updates in StoreSettings never alter historical earnings.
+- **RBAC:** Strict isolation ensuring Franchise Owners (`franchise_owner`) can only access their outlet's inventory, orders, and pickups. Central Admin manages all outlets and settings.
+- **Payment Gateways:** Razorpay verification and optional Cashfree provider.
+
+### API Documentation
+For complete API references, payloads, and examples, see [`doc/dairy-platform-api.md`](doc/dairy-platform-api.md).
+
+### Running Tests
+To run the full automated test suite:
+```bash
+npm test
+```

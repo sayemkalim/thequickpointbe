@@ -667,6 +667,134 @@ const resetPin = asyncHandler(async (req, res) => {
   res.json(new ApiResponse(200, data, "PIN updated successfully. Logged in.", true));
 });
 
+/**
+ * Mobile OTP Step 1: Send 6-digit OTP via SMS to customer's mobile number
+ */
+const sendMobileOtp = asyncHandler(async (req, res) => {
+  const { phoneNumber } = req.body;
+
+  if (!phoneNumber) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "Phone number is required", false));
+  }
+
+  const cleanPhone = String(phoneNumber).replace(/\D/g, "");
+  if (cleanPhone.length < 10) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "Valid 10-digit mobile number is required", false));
+  }
+
+  const phone = cleanPhone.slice(-10);
+
+  // Generate 6-digit OTP (secure random or fixed for predictable test)
+  const otp = process.env.NODE_ENV === "test" && req.headers["x-test-fixed-otp"]
+    ? "123456"
+    : Math.floor(100000 + Math.random() * 900000).toString();
+
+  const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  let user = await User.findOne({ phone });
+  if (!user) {
+    user = new User({ phone });
+  }
+
+  user.mobileOtp = otp;
+  user.mobileOtpExpires = otpExpires;
+  user.mobileOtpAttempts = 0;
+  await user.save();
+
+  // Send SMS via SMS service
+  const SmsService = require("../../../services/sms/index");
+  try {
+    await SmsService.sendSms({
+      to: phone,
+      message: `Your login OTP for Dairy Platform is ${otp}. Valid for 10 minutes. Do not share this OTP with anyone.`,
+    });
+  } catch (smsErr) {
+    console.error("Failed to deliver OTP SMS:", smsErr.message);
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      { phone, expiresInMinutes: 10 },
+      "OTP sent successfully to your mobile number",
+      true
+    )
+  );
+});
+
+/**
+ * Mobile OTP Step 2: Verify 6-digit OTP and login/register customer
+ */
+const verifyMobileOtp = asyncHandler(async (req, res) => {
+  const { phoneNumber, otp, name } = req.body;
+
+  if (!phoneNumber || !otp) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "Phone number and OTP are required", false));
+  }
+
+  const cleanPhone = String(phoneNumber).replace(/\D/g, "");
+  const phone = cleanPhone.slice(-10);
+
+  const user = await User.findOne({ phone });
+  if (!user || !user.mobileOtp) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "No OTP request found for this phone number. Please request a new OTP.", false));
+  }
+
+  if (new Date() > new Date(user.mobileOtpExpires)) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "OTP has expired. Please request a new OTP.", false));
+  }
+
+  // Increment attempts
+  user.mobileOtpAttempts = (user.mobileOtpAttempts || 0) + 1;
+
+  if (user.mobileOtp !== String(otp).trim()) {
+    await user.save();
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "Invalid OTP. Please check and try again.", false));
+  }
+
+  // OTP verified successfully -> clear OTP fields
+  user.mobileOtp = null;
+  user.mobileOtpExpires = null;
+  user.mobileOtpAttempts = 0;
+
+  if (name && !user.name) {
+    user.name = name.trim();
+  }
+
+  await user.save();
+
+  const accessToken = generateAccessToken(user._id);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        user: {
+          id: user._id,
+          name: user.name,
+          phone: user.phone,
+          email: user.email,
+        },
+        accessToken,
+      },
+      "Logged in successfully via mobile OTP",
+      true
+    )
+  );
+});
+
 module.exports = {
   getAllUsers,
   registerUser,
@@ -679,4 +807,6 @@ module.exports = {
   forgotPin,
   verifyResetOtp,
   resetPin,
+  sendMobileOtp,
+  verifyMobileOtp,
 };

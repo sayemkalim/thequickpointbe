@@ -30,6 +30,11 @@ const UserSchema = new mongoose.Schema(
     resetPinOtp: { type: String, default: null },
     resetPinOtpExpires: { type: Date, default: null },
     resetPinAttempts: { type: Number, default: 0 },
+    // Customer Mobile OTP Authentication fields
+    mobileOtp: { type: String, default: null },
+    mobileOtpExpires: { type: Date, default: null },
+    mobileOtpAttempts: { type: Number, default: 0 },
+    mobileOtpWindowStart: { type: Date, default: null },
   },
   { timestamps: true }
 );

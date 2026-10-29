@@ -11,12 +11,23 @@ const {
   forgotPin,
   verifyResetOtp,
   resetPin,
+  sendMobileOtp,
+  verifyMobileOtp,
   // logoutUser,
 } = require("../../../controllers/auth/user/index");
 const { superAdmin } = require("../../../middleware/auth/adminMiddleware");
+const {
+  otpSendLimiter,
+  otpVerifyLimiter,
+} = require("../../../middleware/rateLimiter");
 const router = express.Router();
 
 router.get("/", superAdmin, getAllUsers);
+
+// Customer Mobile OTP Authentication (Dairy Platform & SMS Login)
+router.post("/send-otp", otpSendLimiter, sendMobileOtp);
+router.post("/verify-otp", otpVerifyLimiter, verifyMobileOtp);
+
 router.post("/login", loginUser); // Step 1: phoneNumber -> { is_new_user }
 router.post("/verify-login", verifyLogin); // Step 2 (existing user): phoneNumber + pin -> token
 router.post("/register", registerUser); // Step 2 (new user): phoneNumber + pin + name?/email? -> token
