@@ -1,0 +1,624 @@
+const mongoose = require("mongoose");
+const Counter = require("./counterModel.js");
+
+const OrderItemSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ["product", "bundle"],
+    required: true,
+  },
+  product: {
+    type: new mongoose.Schema({
+      _id: {
+        type: mongoose.Schema.Types.ObjectId,
+        required: function() { return this.type === "product"; }
+      },
+      name: String,
+      price: mongoose.Schema.Types.Decimal128,
+      discounted_price: mongoose.Schema.Types.Decimal128,
+      banner_image: String,
+      image: String,
+      images: [String],
+      sub_category: mongoose.Schema.Types.ObjectId,
+    }),
+    required: function() { return this.type === "product"; }
+  },
+  bundle: {
+    type: new mongoose.Schema({
+      _id: {
+        type: mongoose.Schema.Types.ObjectId,
+        required: function() { return this.type === "bundle"; }
+      },
+      name: String,
+      price: mongoose.Schema.Types.Decimal128,
+      discounted_price: mongoose.Schema.Types.Decimal128,
+      images: [String],
+      description: String,
+      products: [
+        {
+          product: mongoose.Schema.Types.ObjectId,
+          variant_sku: String,
+          quantity: Number,
+        }
+      ],
+    }),
+    required: function() { return this.type === "bundle"; }
+  },
+  variant_sku: {
+    type: String,
+    default: null,
+  },
+  quantity: {
+    type: Number,
+    required: true,
+    min: 1
+  },
+  total_amount: {
+    type: mongoose.Schema.Types.Decimal128,
+    required: true
+  },
+  discounted_total_amount: {
+    type: mongoose.Schema.Types.Decimal128,
+    required: true
+  }
+});
+
+const OrderAddressSchema = new mongoose.Schema({
+  name: String,
+  mobile: String,
+  pincode: String,
+  locality: String,
+  address: String,
+  city: String,
+  state: String,
+  landmark: String,
+  alternatePhone: String,
+  addressType: String
+});
+
+const OrderSchema = new mongoose.Schema({
+  orderNumber: {
+    type: Number,
+    unique: true,
+    sparse: true
+  },
+  user: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User",
+    required: false,
+    default: null
+  },
+  isGuestOrder: {
+    type: Boolean,
+    default: false
+  },
+  guestInfo: {
+    email: {
+      type: String,
+      default: null
+    },
+    name: {
+      type: String,
+      default: null
+    },
+    mobile: {
+      type: String,
+      default: null
+    }
+  },
+  items: [OrderItemSchema],
+  address: OrderAddressSchema,
+  totalAmount: {
+    type: mongoose.Schema.Types.Decimal128,
+    required: true
+  },
+  discountedTotalAmount: {
+    type: mongoose.Schema.Types.Decimal128,
+    required: true
+  },
+  shippingCost: {
+    type: mongoose.Schema.Types.Decimal128,
+    default: 0
+  },
+  coupon: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Coupon",
+    default: null
+  },
+  couponCode: {
+    type: String,
+    default: null
+  },
+  couponDiscountAmount: {
+    type: mongoose.Schema.Types.Decimal128,
+    default: 0
+  },
+  shippingDetails: {
+    deliveryZoneId: mongoose.Schema.Types.ObjectId,
+    zoneName: String,
+    pricingType: String,
+    isManual: {
+      type: Boolean,
+      default: false
+    },
+    package: {
+      weight: {
+        type: Number,
+        default: null
+      },
+      length: {
+        type: Number,
+        default: null
+      },
+      breadth: {
+        type: Number,
+        default: null
+      },
+      height: {
+        type: Number,
+        default: null
+      }
+    },
+    calculatedAt: Date
+  },
+  shipping: {
+    provider: {
+      type: String,
+      default: "shiprocket"
+    },
+    shiprocketOrderId: {
+      type: String,
+      default: null,
+      index: true,
+      sparse: true
+    },
+    shipmentId: {
+      type: String,
+      default: null,
+      index: true,
+      sparse: true
+    },
+    awbCode: {
+      type: String,
+      default: null,
+      index: true,
+      sparse: true
+    },
+    courierName: {
+      type: String,
+      default: null
+    },
+    courierCompanyId: {
+      type: Number,
+      default: null
+    },
+    trackingUrl: {
+      type: String,
+      default: null
+    },
+    labelUrl: {
+      type: String,
+      default: null
+    },
+    manifestUrl: {
+      type: String,
+      default: null
+    },
+    status: {
+      type: String,
+      default: null
+    },
+    statusCode: {
+      type: Number,
+      default: null
+    },
+    pickupScheduledAt: {
+      type: Date,
+      default: null
+    },
+    pickupTokenNumber: {
+      type: String,
+      default: null
+    },
+    shippedAt: {
+      type: Date,
+      default: null
+    },
+    deliveredAt: {
+      type: Date,
+      default: null
+    },
+    cancelledAt: {
+      type: Date,
+      default: null
+    },
+    lastTrackingResponse: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
+    },
+    error: {
+      type: String,
+      default: null
+    }
+  },
+  cod_charge: {
+    type: mongoose.Schema.Types.Decimal128,
+    default: 0
+  },
+  finalTotalAmount: {
+    type: mongoose.Schema.Types.Decimal128,
+    required: true
+  },
+  emailTracking: {
+    confirmation: {
+      status: { 
+        type: String, 
+        enum: ["queued", "sent", "delivered", "bounced", "failed"],
+        default: "queued"
+      },
+      queuedAt: { type: Date },
+      sentAt: { type: Date },
+      deliveredAt: { type: Date },
+      bouncedAt: { type: Date },
+      failedAt: { type: Date },
+      opened: { type: Boolean, default: false },
+      openedAt: { type: Date },
+      openCount: { type: Number, default: 0 },
+      clicked: { type: Boolean, default: false },
+      clickedAt: { type: Date },
+      clickCount: { type: Number, default: 0 },
+      attempts: { type: Number, default: 0 },
+      lastAttemptAt: { type: Date },
+      error: { type: String },
+      bounceReason: { type: String }
+    },
+    statusUpdates: [
+      {
+        status: String,
+        emailStatus: { 
+          type: String, 
+          enum: ["queued", "sent", "delivered", "bounced", "failed"],
+          default: "queued"
+        },
+        queuedAt: { type: Date },
+        sentAt: { type: Date },
+        deliveredAt: { type: Date },
+        bouncedAt: { type: Date },
+        failedAt: { type: Date },
+        opened: { type: Boolean, default: false },
+        openedAt: { type: Date },
+        openCount: { type: Number, default: 0 },
+        clicked: { type: Boolean, default: false },
+        clickedAt: { type: Date },
+        clickCount: { type: Number, default: 0 },
+        attempts: { type: Number, default: 0 },
+        lastAttemptAt: { type: Date },
+        error: { type: String },
+        bounceReason: { type: String }
+      }
+    ]
+  },
+  status: {
+    type: String,
+    enum: [
+      "pending",
+      "confirmed",
+      "processing",
+      "shipped",
+      "out_for_delivery",
+      "delivered",
+      "cancelled",
+      "return_requested",
+      "returned",
+      "refund_initiated",
+      "refunded",
+      "refund_failed"
+    ],
+    default: "pending"
+  },
+  // Payment mode the customer chose at checkout — COD or prepaid via UPI or ONLINE.
+  // Not schema-required: full-document validation reruns on every save (including
+  // unrelated admin updates to older orders), so enforcement lives in the
+  // createOrder/createGuestOrder controllers instead of here.
+  paymentMode: {
+    type: String,
+    enum: ["COD", "UPI", "ONLINE"],
+    default: null
+  },
+  razorpayOrderId: {
+    type: String,
+    default: null,
+    index: true
+  },
+  razorpaySignature: {
+    type: String,
+    default: null
+  },
+  paymentLink: {
+    type: String,
+    default: null
+  },
+  paymentLinkId: {
+    type: String,
+    default: null,
+    index: true
+  },
+  paymentStatus: {
+    type: String,
+    enum: [
+      "pending",
+      "paid",
+      "failed",
+      "cancelled",
+      "refund_initiated",
+      "refunded",
+      "partially_refunded",
+      "refund_failed"
+    ],
+    default: "pending"
+  },
+  paymentId: {
+    type: String,
+    default: null
+  },
+  // Actual method reported by Razorpay once payment completes (e.g. "upi", "card", "netbanking"), or at doorstep for COD ("cash", "upi")
+  paymentMethod: {
+    type: String,
+    default: null
+  },
+  // Doorstep payment collection method for COD orders ("cash" or "upi")
+  codPaymentMethod: {
+    type: String,
+    enum: ["cash", "upi", null],
+    default: null
+  },
+  outForDeliveryAt: {
+    type: Date,
+    default: null
+  },
+  deliveredAt: {
+    type: Date,
+    default: null
+  },
+  returnStatus: {
+    type: String,
+    enum: [null, "requested", "approved", "rejected", "received", "completed"],
+    default: null
+  },
+  returnReason: {
+    type: String,
+    default: null
+  },
+  returnRequestedAt: {
+    type: Date,
+    default: null
+  },
+  returnedAt: {
+    type: Date,
+    default: null
+  },
+  refundId: {
+    type: String,
+    default: null
+  },
+  refundAmount: {
+    type: Number,
+    default: 0
+  },
+  refundStatus: {
+    type: String,
+    enum: [null, "pending", "initiated", "processing", "processed", "completed", "failed"],
+    default: null
+  },
+  refundMode: {
+    type: String,
+    default: null
+  },
+  refundTransactionId: {
+    type: String,
+    default: null
+  },
+  refundTo: {
+    type: String,
+    default: null
+  },
+  refundReason: {
+    type: String,
+    default: null
+  },
+  refundInitiatedAt: {
+    type: Date,
+    default: null
+  },
+  refundedAt: {
+    type: Date,
+    default: null
+  },
+  paidAt: {
+    type: Date,
+    default: null
+  },
+  utr_number: {
+    type: String,
+    default: null
+  },
+  // Set once the order's invoice PDF has been generated (on first transition
+  // to "confirmed"). Presence of billUrl is the idempotency check — never
+  // regenerate once set.
+  billUrl: {
+    type: String,
+    default: null
+  },
+  billGeneratedAt: {
+    type: Date,
+    default: null
+  }
+}, { timestamps: true });
+
+OrderSchema.pre("save", async function (next) {
+  if (this.isNew) {
+    const counter = await Counter.findByIdAndUpdate(
+      { _id: "orderNumber" },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+    this.orderNumber = counter.seq;
+  }
+  next();
+});
+
+OrderSchema.set("toJSON", {
+  transform: (doc, ret) => {
+    // Convert totalAmount and discountedTotalAmount to number with null checks
+    if (ret.totalAmount) {
+      ret.totalAmount = parseFloat(ret.totalAmount.toString());
+    }
+    if (ret.discountedTotalAmount) {
+      ret.discountedTotalAmount = parseFloat(ret.discountedTotalAmount.toString());
+    }
+    if (ret.shippingCost) {
+      ret.shippingCost = parseFloat(ret.shippingCost.toString());
+    }
+    if (ret.couponDiscountAmount) {
+      ret.couponDiscountAmount = parseFloat(ret.couponDiscountAmount.toString());
+    }
+    if (ret.cod_charge !== undefined && ret.cod_charge !== null) {
+      ret.cod_charge = parseFloat(ret.cod_charge.toString());
+    }
+    if (ret.finalTotalAmount) {
+      ret.finalTotalAmount = parseFloat(ret.finalTotalAmount.toString());
+    }
+
+    // Format orderNumber with OD- prefix in API responses
+    if (ret.orderNumber !== undefined && ret.orderNumber !== null) {
+      const numStr = String(ret.orderNumber).trim().replace(/^#/, "");
+      ret.orderNumber = numStr.toUpperCase().startsWith("OD-")
+        ? numStr.toUpperCase()
+        : `OD-${numStr}`;
+    }
+
+    // Ensure ret.items is an array before mapping
+    if (Array.isArray(ret.items)) {
+      ret.items = ret.items.map(item => {
+        if (item.type === "product" && item.product) {
+          const bannerImage = item.product.banner_image || null;
+          const imagesList = Array.isArray(item.product.images) ? item.product.images : [];
+          const productImage =
+            item.product.image ||
+            bannerImage ||
+            (imagesList.length > 0 ? imagesList[0] : null);
+
+          return {
+            ...item,
+            product: {
+              ...item.product,
+              banner_image: bannerImage,
+              image: productImage,
+              images: imagesList,
+              price: item.product.price ? parseFloat(item.product.price.toString()) : null,
+              discounted_price: item.product.discounted_price
+                ? parseFloat(item.product.discounted_price.toString())
+                : null
+            },
+            total_amount: item.total_amount ? parseFloat(item.total_amount.toString()) : null,
+            discounted_total_amount: item.discounted_total_amount ? parseFloat(item.discounted_total_amount.toString()) : null
+          };
+        } else if (item.type === "bundle" && item.bundle) {
+          return {
+            ...item,
+            bundle: {
+              ...item.bundle,
+              price: item.bundle.price ? parseFloat(item.bundle.price.toString()) : null,
+              discounted_price: item.bundle.discounted_price
+                ? parseFloat(item.bundle.discounted_price.toString())
+                : null
+            },
+            total_amount: item.total_amount ? parseFloat(item.total_amount.toString()) : null,
+            discounted_total_amount: item.discounted_total_amount ? parseFloat(item.discounted_total_amount.toString()) : null
+          };
+        }
+        return item;
+      });
+    }
+
+    return ret;
+  }
+});
+
+OrderSchema.set("toObject", {
+  transform: (doc, ret) => {
+    if (ret.totalAmount) {
+      ret.totalAmount = parseFloat(ret.totalAmount.toString());
+    }
+    if (ret.discountedTotalAmount) {
+      ret.discountedTotalAmount = parseFloat(ret.discountedTotalAmount.toString());
+    }
+    if (ret.shippingCost) {
+      ret.shippingCost = parseFloat(ret.shippingCost.toString());
+    }
+    if (ret.couponDiscountAmount) {
+      ret.couponDiscountAmount = parseFloat(ret.couponDiscountAmount.toString());
+    }
+    if (ret.cod_charge !== undefined && ret.cod_charge !== null) {
+      ret.cod_charge = parseFloat(ret.cod_charge.toString());
+    }
+    if (ret.finalTotalAmount) {
+      ret.finalTotalAmount = parseFloat(ret.finalTotalAmount.toString());
+    }
+
+    // Format orderNumber with OD- prefix in API responses
+    if (ret.orderNumber !== undefined && ret.orderNumber !== null) {
+      const numStr = String(ret.orderNumber).trim().replace(/^#/, "");
+      ret.orderNumber = numStr.toUpperCase().startsWith("OD-")
+        ? numStr.toUpperCase()
+        : `OD-${numStr}`;
+    }
+
+    if (Array.isArray(ret.items)) {
+      ret.items = ret.items.map(item => {
+        if (item.type === "product" && item.product) {
+          const bannerImage = item.product.banner_image || null;
+          const imagesList = Array.isArray(item.product.images) ? item.product.images : [];
+          const productImage =
+            item.product.image ||
+            bannerImage ||
+            (imagesList.length > 0 ? imagesList[0] : null);
+
+          return {
+            ...item,
+            product: {
+              ...item.product,
+              banner_image: bannerImage,
+              image: productImage,
+              images: imagesList,
+              price: item.product.price ? parseFloat(item.product.price.toString()) : null,
+              discounted_price: item.product.discounted_price
+                ? parseFloat(item.product.discounted_price.toString())
+                : null
+            },
+            total_amount: item.total_amount ? parseFloat(item.total_amount.toString()) : null,
+            discounted_total_amount: item.discounted_total_amount ? parseFloat(item.discounted_total_amount.toString()) : null
+          };
+        } else if (item.type === "bundle" && item.bundle) {
+          return {
+            ...item,
+            bundle: {
+              ...item.bundle,
+              price: item.bundle.price ? parseFloat(item.bundle.price.toString()) : null,
+              discounted_price: item.bundle.discounted_price
+                ? parseFloat(item.bundle.discounted_price.toString())
+                : null
+            },
+            total_amount: item.total_amount ? parseFloat(item.total_amount.toString()) : null,
+            discounted_total_amount: item.discounted_total_amount ? parseFloat(item.discounted_total_amount.toString()) : null
+          };
+        }
+        return item;
+      });
+    }
+
+    return ret;
+  }
+});
+
+module.exports = mongoose.model("Order", OrderSchema);
