@@ -453,4 +453,30 @@ describe("Multi-Outlet Dairy Platform Test Suite", () => {
     assert.equal(updated.pickupStatus, "picked_up");
     assert.equal(updated.status, "delivered");
   });
+
+  // 12. Webz Media SMS Gateway Provider for OTP
+  test("12. Webz Media SMS provider formats Indian numbers and delivers OTP in test/mock mode", async () => {
+    const WebzmediaSmsProvider = require("../services/sms/webzmediaProvider");
+    const provider = new WebzmediaSmsProvider({
+      username: "test_user",
+      password: "test_password",
+      senderId: "QPOINT",
+      route: "trans",
+      dltTemplateId: "1207161234567890",
+    });
+
+    assert.equal(provider.formatPhoneNumber("+919876543210"), "9876543210");
+    assert.equal(provider.formatPhoneNumber("09876543210"), "9876543210");
+    assert.equal(provider.formatPhoneNumber("9876543210"), "9876543210");
+    assert.equal(provider.isConfigured(), true);
+
+    const SmsService = require("../services/sms/index");
+    const result = await SmsService.sendLoginOtp({
+      phone: "9876543210",
+      otp: "847291",
+    });
+
+    assert.equal(result.success, true);
+    assert.ok(result.messageId);
+  });
 });
