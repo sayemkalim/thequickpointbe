@@ -28,6 +28,7 @@ const webhookRoutes = require("./routes/webhook/index.js");
 const inventoryRoutes = require("./routes/inventory/index.js");
 const couponRoutes = require("./routes/coupon/index.js");
 const bannerRoutes = require("./routes/banner/index.js");
+const marqueeRoutes = require("./routes/marquee/index.js");
 
 // Multi-Outlet Dairy Platform Routes
 const dairyFranchiseRoutes = require("./routes/dairy/franchiseRoutes.js");
@@ -80,6 +81,7 @@ app.use("/api/webhook", webhookRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/coupon", couponRoutes);
 app.use("/api/banner", bannerRoutes);
+app.use("/api/marquee", marqueeRoutes);
 
 // Multi-Outlet Dairy Routes
 app.use("/api/dairy/outlets", dairyFranchiseRoutes);

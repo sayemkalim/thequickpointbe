@@ -488,6 +488,12 @@ Webhooks run without user authentication and use cryptographically secure signat
 | `GET` | `/api/banner/active` | Public | Active homepage marketing banners |
 | `POST` | `/api/banner` | Admin | Upload banner image (Multer/Cloudinary) |
 | `DELETE`| `/api/banner/:id` | Admin | Delete banner |
+| `GET` | `/api/marquee/active` | Public | Active scrolling announcement text for storefront/mobile |
+| `GET` | `/api/marquee` | Admin | List all marquee announcements |
+| `POST` | `/api/marquee` | Admin | Create marquee text (`text`, `order`, `is_active`) |
+| `GET` | `/api/marquee/:id` | Admin | Get marquee details |
+| `PUT` | `/api/marquee/:id` | Admin | Update marquee text / active state |
+| `DELETE`| `/api/marquee/:id` | Admin | Delete marquee announcement |
 
 ---
 

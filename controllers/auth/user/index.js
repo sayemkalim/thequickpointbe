@@ -705,12 +705,12 @@ const sendMobileOtp = asyncHandler(async (req, res) => {
   user.mobileOtpAttempts = 0;
   await user.save();
 
-  // Send SMS via SMS service
+  // Send SMS via SMS service (Webzmedia / Brevo / Mock)
   const SmsService = require("../../../services/sms/index");
   try {
-    await SmsService.sendSms({
-      to: phone,
-      message: `Your login OTP for Dairy Platform is ${otp}. Valid for 10 minutes. Do not share this OTP with anyone.`,
+    await SmsService.sendLoginOtp({
+      phone,
+      otp,
     });
   } catch (smsErr) {
     console.error("Failed to deliver OTP SMS:", smsErr.message);
