@@ -30,7 +30,7 @@ Backend services for QuickPoint Dairy in Bihar:
       description: "Local Development Server",
     },
     {
-      url: "https://thequickpointbe.onrender.com",
+      url: "https://thequickpointbe-3opb.onrender.com",
       description: "Production Server (Render)",
     },
   ],
