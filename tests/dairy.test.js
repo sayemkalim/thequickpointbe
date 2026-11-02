@@ -457,18 +457,28 @@ describe("Multi-Outlet Dairy Platform Test Suite", () => {
   // 12. Webz Media SMS Gateway Provider for OTP
   test("12. Webz Media SMS provider formats Indian numbers and delivers OTP in test/mock mode", async () => {
     const WebzmediaSmsProvider = require("../services/sms/webzmediaProvider");
-    const provider = new WebzmediaSmsProvider({
-      username: "test_user",
-      password: "test_password",
-      senderId: "QPOINT",
-      route: "trans",
-      dltTemplateId: "1207161234567890",
+    const tokenProvider = new WebzmediaSmsProvider({
+      authKey: "test_token_key",
+      senderId: "THQPNT",
+      route: "16",
+      dltTemplateId: "1107176249859819412",
     });
 
-    assert.equal(provider.formatPhoneNumber("+919876543210"), "9876543210");
-    assert.equal(provider.formatPhoneNumber("09876543210"), "9876543210");
-    assert.equal(provider.formatPhoneNumber("9876543210"), "9876543210");
-    assert.equal(provider.isConfigured(), true);
+    assert.equal(tokenProvider.formatPhoneNumber("+919876543210"), "9876543210");
+    assert.equal(tokenProvider.formatPhoneNumber("09876543210"), "9876543210");
+    assert.equal(tokenProvider.formatPhoneNumber("9876543210"), "9876543210");
+    assert.equal(tokenProvider.isConfigured(), true);
+    assert.equal(tokenProvider.isTokenKeyMode(), true);
+
+    const legacyProvider = new WebzmediaSmsProvider({
+      username: "test_user",
+      password: "test_password",
+      senderId: "THQPNT",
+      route: "16",
+      dltTemplateId: "1107176249859819412",
+    });
+    assert.equal(legacyProvider.isConfigured(), true);
+    assert.equal(legacyProvider.isTokenKeyMode(), false);
 
     const SmsService = require("../services/sms/index");
     const result = await SmsService.sendLoginOtp({

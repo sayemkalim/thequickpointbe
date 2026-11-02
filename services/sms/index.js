@@ -3,13 +3,15 @@ const WebzmediaSmsProvider = require("./webzmediaProvider");
 
 /**
  * Pluggable SMS Service
- * Supports Webzmedia (http://sms.webzmedia.co.in/http-api.php), Brevo SMS, and Mock/Console provider.
+ * Supports WebzMedia Token Key API (http://sms.webzmedia.co.in/http-tokenkeyapi.php),
+ * Brevo SMS, and Mock/Console provider.
  */
 class SmsService {
   constructor() {
     this.provider = (process.env.SMS_PROVIDER || "webzmedia").toLowerCase();
     this.brevoApiKey = process.env.BREVO_API_KEY;
-    this.senderId = process.env.WEBZMEDIA_SENDER_ID || process.env.SMS_SENDER_ID || "QPOINT";
+    this.senderId = process.env.WEBZMEDIA_SENDER_ID || process.env.SMS_SENDER_ID || "THQPNT";
+    this.defaultOtpTemplateId = process.env.WEBZMEDIA_DLT_TE_ID || "1107176249859819412";
     this.webzmedia = new WebzmediaSmsProvider();
 
     if (this.brevoApiKey && this.provider === "brevo") {
@@ -31,7 +33,12 @@ class SmsService {
     if (process.env.SMS_PROVIDER) {
       return process.env.SMS_PROVIDER.toLowerCase();
     }
-    if (process.env.WEBZMEDIA_USERNAME || process.env.SMS_USERNAME) {
+    if (
+      process.env.WEBZMEDIA_AUTH_KEY ||
+      process.env.SMS_AUTH_KEY ||
+      process.env.WEBZMEDIA_USERNAME ||
+      process.env.SMS_USERNAME
+    ) {
       return "webzmedia";
     }
     if (this.brevoApiKey) {
@@ -69,7 +76,7 @@ class SmsService {
       };
     }
 
-    // 1. Webzmedia SMS Gateway (http://sms.webzmedia.co.in)
+    // 1. Webzmedia SMS Gateway (Token Key API / HTTP API)
     if (providerToUse === "webzmedia") {
       try {
         return await this.webzmedia.sendSms({
@@ -97,7 +104,7 @@ class SmsService {
         }
 
         const sendTransacSms = new brevo.SendTransacSms();
-        sendTransacSms.sender = (sender || this.senderId || "QPOINT").substring(0, 11);
+        sendTransacSms.sender = (sender || this.senderId || "THQPNT").substring(0, 11);
         sendTransacSms.recipient = recipient;
         sendTransacSms.content = message;
         sendTransacSms.type = "transactional";
@@ -131,10 +138,19 @@ class SmsService {
 
   /**
    * Helper to send Customer Login / Registration Mobile OTP
+   * Approved DLT Template ID: 1107176249859819412
+   * Approved DLT Text: "({#var#}) is your one-time password for account verification. Please enter the OTP to proceed. The Quick Point"
    */
   async sendLoginOtp({ phone, otp, templateId = null }) {
-    const message = `Your verification OTP for QuickPoint Dairy is: ${otp}. Valid for 10 minutes. Do not share this OTP with anyone.`;
-    return this.sendSms({ to: phone, message, templateId });
+    const resolvedTemplateId = templateId || this.defaultOtpTemplateId || "1107176249859819412";
+    // Replace {#var#} with the generated OTP preserving the exact remaining message text
+    const message = `(${otp}) is your one-time password for account verification. Please enter the OTP to proceed. The Quick Point`;
+    return this.sendSms({
+      to: phone,
+      message,
+      sender: this.senderId,
+      templateId: resolvedTemplateId,
+    });
   }
 
   /**
