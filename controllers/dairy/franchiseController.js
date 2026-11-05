@@ -106,16 +106,35 @@ const createFranchise = asyncHandler(async (req, res) => {
  */
 const updateFranchise = asyncHandler(async (req, res) => {
   try {
+    const adminId = req.admin?._id || req.admin?.id || null;
     const franchise = await FranchiseService.updateFranchise(
       req.params.id,
       req.body,
-      req.admin._id
+      adminId
     );
     return res.status(200).json(
       new ApiResponse(200, franchise, "Franchise outlet updated successfully", true)
     );
   } catch (error) {
-    return res.status(400).json(new ApiResponse(400, null, error.message, false));
+    const statusCode = error.message.includes("not found") ? 404 : 400;
+    return res.status(statusCode).json(new ApiResponse(statusCode, null, error.message, false));
+  }
+});
+
+/**
+ * Admin: Delete or Deactivate franchise outlet
+ * Query params: ?hard=true for permanent deletion (default: soft-delete/deactivate)
+ */
+const deleteFranchise = asyncHandler(async (req, res) => {
+  try {
+    const hardDelete = req.query.hard === "true" || req.query.permanent === "true" || req.query.force === "true";
+    const result = await FranchiseService.deleteFranchise(req.params.id, { hardDelete });
+    return res.status(200).json(
+      new ApiResponse(200, result, result.message, true)
+    );
+  } catch (error) {
+    const statusCode = error.message.includes("not found") ? 404 : 400;
+    return res.status(statusCode).json(new ApiResponse(statusCode, null, error.message, false));
   }
 });
 
@@ -140,5 +159,6 @@ module.exports = {
   getOutletById,
   createFranchise,
   updateFranchise,
+  deleteFranchise,
   regenerateQrCode,
 };

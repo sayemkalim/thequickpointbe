@@ -97,7 +97,6 @@ class FranchiseService {
       "name",
       "phone",
       "email",
-      "address",
       "status",
       "radiusKm",
       "operatingHours",
@@ -109,6 +108,32 @@ class FranchiseService {
         franchise[field] = data[field];
       }
     });
+
+    if (data.isActive !== undefined) {
+      franchise.status = data.isActive ? "active" : "inactive";
+    }
+
+    if (data.code && data.code.trim().toUpperCase() !== franchise.code) {
+      const codeUpper = data.code.trim().toUpperCase();
+      const existingCode = await Franchise.findOne({ code: codeUpper, _id: { $ne: id } });
+      if (existingCode) {
+        throw new Error(`Outlet code "${codeUpper}" is already in use by another outlet`);
+      }
+      franchise.code = codeUpper;
+    }
+
+    if (data.address && typeof data.address === "object") {
+      const existingAddress = franchise.address ? (franchise.address.toObject ? franchise.address.toObject() : franchise.address) : {};
+      franchise.address = {
+        ...existingAddress,
+        ...data.address,
+      };
+    } else if (typeof data.address === "string") {
+      franchise.address = {
+        ...(franchise.address || {}),
+        street: data.address,
+      };
+    }
 
     if (data.longitude !== undefined && data.latitude !== undefined) {
       franchise.location = {
@@ -129,7 +154,7 @@ class FranchiseService {
           storeSettings = await StoreSettings.create({});
         }
         storeSettings.auditLogs.push({
-          changedBy: adminId,
+          changedBy: adminId || null,
           franchise: franchise._id,
           changeType: "franchise_commission",
           previousSetting: oldSetting,
@@ -144,6 +169,37 @@ class FranchiseService {
 
     await franchise.save();
     return franchise;
+  }
+
+  /**
+   * Delete or deactivate franchise outlet
+   * @param {string} id - Franchise ObjectId
+   * @param {Object} options - { hardDelete: boolean }
+   */
+  async deleteFranchise(id, options = {}) {
+    const franchise = await Franchise.findById(id);
+    if (!franchise) {
+      throw new Error("Franchise outlet not found");
+    }
+
+    if (options.hardDelete) {
+      await FranchiseInventory.deleteMany({ franchise: id });
+      await Franchise.findByIdAndDelete(id);
+      return {
+        message: "Franchise outlet permanently deleted",
+        id,
+        hardDeleted: true,
+      };
+    }
+
+    // Default: Soft delete / deactivate so historical orders and accounting remain intact
+    franchise.status = "inactive";
+    await franchise.save();
+    return {
+      message: "Franchise outlet deactivated successfully",
+      franchise,
+      hardDeleted: false,
+    };
   }
 
   /**

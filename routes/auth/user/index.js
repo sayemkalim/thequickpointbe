@@ -1,19 +1,12 @@
 const express = require("express");
 const {
   getAllUsers,
-  registerUser,
+  getUserById,
   updateUser,
   deleteUser,
-  loginUser,
-  verifyLogin,
-  getUserById,
   googleLogin,
-  forgotPin,
-  verifyResetOtp,
-  resetPin,
   sendMobileOtp,
   verifyMobileOtp,
-  // logoutUser,
 } = require("../../../controllers/auth/user/index");
 const { superAdmin } = require("../../../middleware/auth/adminMiddleware");
 const {
@@ -22,30 +15,21 @@ const {
 } = require("../../../middleware/rateLimiter");
 const router = express.Router();
 
+// Super Admin: List all users
 router.get("/", superAdmin, getAllUsers);
 
-// Customer Mobile OTP Authentication (Dairy Platform & SMS Login)
+// Customer Mobile OTP Authentication (WebzMedia SMS)
 router.post("/send-otp", otpSendLimiter, sendMobileOtp);
 router.post("/verify-otp", otpVerifyLimiter, verifyMobileOtp);
 
-router.post("/login", loginUser); // Step 1: phoneNumber -> { is_new_user }
-router.post("/verify-login", verifyLogin); // Step 2 (existing user): phoneNumber + pin -> token
-router.post("/register", registerUser); // Step 2 (new user): phoneNumber + pin + name?/email? -> token
-router.post("/google", googleLogin); // Google OAuth login
+// Google OAuth Login
+router.post("/google", googleLogin);
 
-// Forgot PIN / Password flow
-router.post("/forgot-pin", forgotPin); // Request OTP to registered email
-router.post("/forgot-password", forgotPin); // Alias for compatibility
-router.post("/verify-reset-otp", verifyResetOtp); // Verify OTP -> resetToken
-router.post("/reset-pin", resetPin); // Update PIN with OTP or resetToken
-router.post("/reset-password", resetPin); // Alias for compatibility
-
+// Customer Profile Management
 router.get("/:id", getUserById);
 router.patch("/:id", updateUser);
 
-// router.post("/logout", logoutUser);
-
-// DEVELOPMENT API's
+// Development / Admin Deletion
 router.delete("/:id", deleteUser);
 
 module.exports = router;

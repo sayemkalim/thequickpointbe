@@ -44,7 +44,7 @@ const getAllAdmins = asyncHandler(async (req, res) => {
 });
 
 const registerAdmin = asyncHandler(async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, franchise, franchiseId } = req.body;
   const adminExists = await Admin.findOne({ email });
 
   if (adminExists) {
@@ -57,7 +57,8 @@ const registerAdmin = asyncHandler(async (req, res) => {
     name,
     email,
     password,
-    role,
+    role: role || "admin",
+    franchise: franchise || franchiseId || null,
   });
 
   const accessToken = generateAccessToken(admin._id);
@@ -67,8 +68,9 @@ const registerAdmin = asyncHandler(async (req, res) => {
     id: admin.id,
     name: admin.name,
     email: admin.email,
-    token: accessToken,
     role: admin.role,
+    franchise: admin.franchise,
+    token: accessToken,
   };
 
   res.json(new ApiResponse(201, data, "New admin created successfully", true));
@@ -93,6 +95,7 @@ const loginAdmin = asyncHandler(async (req, res) => {
     name: admin.name,
     email: admin.email,
     role: admin.role,
+    franchise: admin.franchise || null,
     token: accessToken,
   };
 
@@ -101,7 +104,7 @@ const loginAdmin = asyncHandler(async (req, res) => {
 
 const updateAdmin = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, email, role } = req.body;
+  const { name, email, role, franchise, franchiseId, password } = req.body;
 
   const admin = await Admin.findById(id);
   if (!admin) {
@@ -113,10 +116,14 @@ const updateAdmin = asyncHandler(async (req, res) => {
   if (name) admin.name = name;
   if (email) admin.email = email;
   if (role) admin.role = role;
+  if (franchise !== undefined || franchiseId !== undefined) {
+    admin.franchise = franchise || franchiseId || null;
+  }
+  if (password) admin.password = password;
 
   await admin.save();
 
-  const updatedAdmin = await Admin.findById(id);
+  const updatedAdmin = await Admin.findById(id).select("-password");
 
   res.json(
     new ApiResponse(200, updatedAdmin, "Admin updated successfully", true)

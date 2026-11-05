@@ -5,7 +5,7 @@ const rateLimitStore = new Map();
 /**
  * Clean up expired rate limit entries every 5 minutes
  */
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, record] of rateLimitStore.entries()) {
     if (now > record.resetTime) {
@@ -13,6 +13,9 @@ setInterval(() => {
     }
   }
 }, 5 * 60 * 1000);
+if (cleanupTimer.unref) {
+  cleanupTimer.unref();
+}
 
 /**
  * Creates an in-memory sliding window rate limiter

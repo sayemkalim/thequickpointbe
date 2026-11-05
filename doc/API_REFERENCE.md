@@ -40,7 +40,7 @@ Authorization: Bearer <jwt_access_token>
 ### Roles
 | Role | Description | Access Scope |
 | :--- | :--- | :--- |
-| `user` | Customer authenticated via Mobile OTP or PIN | Can browse catalog, manage personal cart, place orders, view order history. |
+| `user` | Customer authenticated via Mobile OTP or Google OAuth | Can browse catalog, manage personal cart, place orders, view order history. |
 | `super_admin` | Platform owner / Central Admin | Unrestricted access across all outlets, system settings, payouts, and catalogs. |
 | `admin` | Central Operations Staff | Global access to orders, products, inventory, and analytics. |
 | `franchise_owner` | Outlet Owner or Store Manager | Scoped strictly to their designated `franchise` outlet (`orders`, `inventory`, `commission`). |
@@ -136,6 +136,53 @@ Authorization: Bearer <jwt_access_token>
     "operatingHours": {
       "open": "06:00",
       "close": "22:00"
+    }
+  }
+  ```
+
+#### Update Outlet
+- **Method & Path:** `PUT /api/dairy/outlets/:id` or `PATCH /api/dairy/outlets/:id`
+- **Auth:** Central Admin (`super_admin`, `admin`)
+- **Request Body (partial update supported):**
+  ```json
+  {
+    "name": "QuickPoint Boring Road Super Store",
+    "phone": "9876543210",
+    "email": "boringroad@quickpoint.in",
+    "status": "active",
+    "radiusKm": 15,
+    "latitude": 25.6132,
+    "longitude": 85.1215,
+    "address": {
+      "street": "Boring Canal Road, Near Crossing",
+      "city": "Patna",
+      "state": "Bihar",
+      "pincode": "800001"
+    },
+    "operatingHours": {
+      "openingTime": "06:00",
+      "closingTime": "22:00"
+    }
+  }
+  ```
+
+#### Delete Outlet
+- **Method & Path:** `DELETE /api/dairy/outlets/:id`
+- **Auth:** Central Admin (`super_admin`, `admin`)
+- **Query Parameters:**
+  - `hard`: (Optional, `true` or `false`, default: `false`). Set `?hard=true` to permanently purge from database.
+- **Behavior:**
+  - By default (soft-delete), sets `status: "inactive"` so customer proximity search and QR code ordering are disabled, while past order financial ledger records remain intact.
+  - With `?hard=true`, removes the outlet and deletes its associated inventory records.
+- **Response `200 OK`:**
+  ```json
+  {
+    "statusCode": 200,
+    "success": true,
+    "message": "Franchise outlet deactivated successfully",
+    "data": {
+      "message": "Franchise outlet deactivated successfully",
+      "hardDeleted": false
     }
   }
   ```
@@ -344,17 +391,12 @@ All Shiprocket endpoints are protected by `adminOrSuperAdmin`.
   }
   ```
 
-### Additional User Auth Endpoints
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/auth/user/login` | Login with Phone/Email & 4-digit PIN |
-| `POST` | `/api/auth/user/verify-login` | Verify 2FA login token |
-| `POST` | `/api/auth/user/register` | Register new customer account |
-| `POST` | `/api/auth/user/google` | Google OAuth token login |
-| `POST` | `/api/auth/user/forgot-pin` | Request PIN reset OTP |
-| `POST` | `/api/auth/user/reset-pin` | Set new 4-digit PIN with OTP |
-| `GET` | `/api/auth/user/:id` | Get customer profile details |
-| `PATCH`| `/api/auth/user/:id` | Update customer name / email |
+### Additional Customer Account Endpoints
+| Method | Endpoint | Auth | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/user/google` | Public | Google OAuth One-Tap sign-in with ID token |
+| `GET` | `/api/auth/user/:id` | Authenticated User | Get customer profile details |
+| `PATCH`| `/api/auth/user/:id` | Authenticated User | Update customer name / email / phone |
 
 ---
 

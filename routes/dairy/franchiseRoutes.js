@@ -7,6 +7,7 @@ const {
   getOutletById,
   createFranchise,
   updateFranchise,
+  deleteFranchise,
   regenerateQrCode,
 } = require("../../controllers/dairy/franchiseController");
 const { centralAdmin } = require("../../middleware/auth/adminMiddleware");
@@ -19,7 +20,9 @@ router.get("/:id", getOutletById);
 
 // Central Admin management endpoints
 router.post("/", centralAdmin, createFranchise);
+router.put("/:id", centralAdmin, updateFranchise);
 router.patch("/:id", centralAdmin, updateFranchise);
+router.delete("/:id", centralAdmin, deleteFranchise);
 router.post("/:id/regenerate-qr", centralAdmin, regenerateQrCode);
 
 module.exports = router;
