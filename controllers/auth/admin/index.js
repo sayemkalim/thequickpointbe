@@ -20,8 +20,8 @@ const getAllAdmins = asyncHandler(async (req, res) => {
   if (role && role !== "all") {
     query.role = role;
   } else {
-    // Return all staff & admin roles
-    query.role = { $in: ["admin", "franchise_owner", "sub_admin", "super_admin"] };
+    // Strictly list only admin and franchise_owner roles
+    query.role = { $in: ["admin", "franchise_owner"] };
   }
 
   if (search) {
