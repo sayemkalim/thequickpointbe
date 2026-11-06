@@ -139,6 +139,56 @@ class FranchiseInventoryService {
             variant_sku: variantSku,
           }).lean();
 
+          // If no outlet inventory record exists yet, fallback to product catalog stock
+          if (!current) {
+            const productDoc = await Product.findById(productId);
+            let catalogStock = 0;
+            if (productDoc) {
+              if (variantSku && Array.isArray(productDoc.variants)) {
+                const matchedVariant = productDoc.variants.find((v) => v.sku === variantSku);
+                catalogStock = Number(matchedVariant?.inventory || 0);
+              } else {
+                catalogStock = Number(productDoc.inventory || 0);
+              }
+            }
+
+            if (catalogStock >= requestedQty) {
+              try {
+                await FranchiseInventory.create({
+                  franchise: franchiseId,
+                  product: productId,
+                  variant_sku: variantSku,
+                  sku: variantSku || productDoc?.sku || "SKU",
+                  quantity_on_hand: catalogStock,
+                  reserved_quantity: requestedQty,
+                  low_stock_threshold: 5,
+                  last_restocked_at: new Date(),
+                });
+
+                reservedItems.push({
+                  productId,
+                  variantSku,
+                  quantity: requestedQty,
+                });
+                continue;
+              } catch (createErr) {
+                const retryUpdated = await FranchiseInventory.findOneAndUpdate(
+                  query,
+                  { $inc: { reserved_quantity: requestedQty } },
+                  { new: true }
+                );
+                if (retryUpdated) {
+                  reservedItems.push({
+                    productId,
+                    variantSku,
+                    quantity: requestedQty,
+                  });
+                  continue;
+                }
+              }
+            }
+          }
+
           const available = current
             ? Math.max(0, (current.quantity_on_hand || 0) - (current.reserved_quantity || 0))
             : 0;

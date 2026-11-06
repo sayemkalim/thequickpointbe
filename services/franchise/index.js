@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const Franchise = require("../../models/franchiseModel");
 const FranchiseInventory = require("../../models/franchiseInventoryModel");
 const StoreSettings = require("../../models/storeSettingsModel");
+const Product = require("../../models/productsModel");
 
 class FranchiseService {
   /**
@@ -346,9 +347,22 @@ class FranchiseService {
       }
 
       const inv = await FranchiseInventory.findOne(query).lean();
-      const availableQty = inv
+      let availableQty = inv
         ? Math.max(0, (inv.quantity_on_hand || 0) - (inv.reserved_quantity || 0))
         : 0;
+
+      // If no outlet inventory record exists yet, fallback to product catalog stock
+      if (!inv) {
+        const productDoc = await Product.findById(productId).lean();
+        if (productDoc) {
+          if (variantSku && Array.isArray(productDoc.variants)) {
+            const matchedVariant = productDoc.variants.find((v) => v.sku === variantSku);
+            availableQty = Number(matchedVariant?.inventory || 0);
+          } else {
+            availableQty = Number(productDoc.inventory || 0);
+          }
+        }
+      }
 
       if (availableQty < requestedQty) {
         unavailableItems.push({
