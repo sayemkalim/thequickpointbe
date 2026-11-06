@@ -46,33 +46,70 @@ class FranchiseService {
       ownerAdmin,
       commissionOverride,
       operatingHours,
+      city,
+      pincode,
+      status,
+      isActive,
     } = data;
 
-    const normalizedCode = code.trim().toUpperCase();
+    const rawCity = (city || (typeof address === "object" ? address.city : null) || "PATNA").toUpperCase().replace(/[^A-Z]/g, "") || "QP";
+    const normalizedCode = (code && String(code).trim() ? String(code).trim() : `QP-${rawCity}-${Math.floor(100 + Math.random() * 900)}`).toUpperCase();
 
     const existing = await Franchise.findOne({ code: normalizedCode });
     if (existing) {
       throw new Error(`Franchise outlet with code "${normalizedCode}" already exists.`);
     }
 
-    const hasExplicitCoordinates = latitude !== undefined && longitude !== undefined;
-    const coordinates = [
-      Number(longitude ?? 85.1376), // [lng, lat]
-      Number(latitude ?? 25.5941),
-    ];
+    let addressObj = {};
+    if (typeof address === "string") {
+      addressObj = {
+        street: address,
+        city: city || "Patna",
+        district: city || "Patna",
+        state: "Bihar",
+        pincode: pincode || "",
+      };
+    } else if (typeof address === "object" && address !== null) {
+      addressObj = { ...address };
+      if (city && !addressObj.city) addressObj.city = city;
+      if (pincode && !addressObj.pincode) addressObj.pincode = pincode;
+    } else {
+      addressObj = {
+        street: "",
+        city: city || "Patna",
+        district: city || "Patna",
+        state: "Bihar",
+        pincode: pincode || "",
+      };
+    }
+
+    const hasExplicitCoordinates =
+      latitude !== undefined &&
+      latitude !== null &&
+      latitude !== "" &&
+      longitude !== undefined &&
+      longitude !== null &&
+      longitude !== "" &&
+      !isNaN(Number(latitude)) &&
+      !isNaN(Number(longitude));
+
+    const coordinates = hasExplicitCoordinates
+      ? [Number(longitude), Number(latitude)]
+      : [85.1376, 25.5941]; // Fallback placeholder coordinates until captured physically
 
     const franchise = new Franchise({
       name,
       code: normalizedCode,
       slug: normalizedCode.toLowerCase(),
-      phone,
-      email,
-      address,
+      phone: phone || "",
+      email: email || `${normalizedCode.toLowerCase()}@quickpoint.in`,
+      address: addressObj,
       location: {
         type: "Point",
         coordinates,
       },
-      isLocationVerified: hasExplicitCoordinates,
+      isLocationVerified: Boolean(hasExplicitCoordinates),
+      status: status || (isActive === false ? "inactive" : "active"),
       radiusKm: radiusKm ? Number(radiusKm) : 15,
       ownerAdmin: ownerAdmin || null,
       commissionOverride: commissionOverride || { enabled: false },
