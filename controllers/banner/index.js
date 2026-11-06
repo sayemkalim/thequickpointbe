@@ -90,17 +90,14 @@ const createBanner = asyncHandler(async (req, res) => {
   }
 
   const productIds = extractProductIds(req.body);
-  if (productIds.length === 0) {
-    return res.json(
-      new ApiResponse(400, null, "At least one valid product is required", false)
-    );
-  }
 
-  const invalidIds = productIds.filter((id) => !mongoose.Types.ObjectId.isValid(id));
-  if (invalidIds.length > 0) {
-    return res.json(
-      new ApiResponse(400, null, `Invalid product ID(s): ${invalidIds.join(", ")}`, false)
-    );
+  if (productIds.length > 0) {
+    const invalidIds = productIds.filter((id) => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidIds.length > 0) {
+      return res.json(
+        new ApiResponse(400, null, `Invalid product ID(s): ${invalidIds.join(", ")}`, false)
+      );
+    }
   }
 
   const banner_url = await uploadSingleFile(req.file.path, "uploads/banners");
@@ -137,17 +134,14 @@ const updateBanner = asyncHandler(async (req, res) => {
 
   if (hasProductsField) {
     const productIds = extractProductIds(req.body);
-    if (productIds.length === 0) {
-      return res.json(
-        new ApiResponse(400, null, "At least one valid product is required", false)
-      );
-    }
 
-    const invalidIds = productIds.filter((id) => !mongoose.Types.ObjectId.isValid(id));
-    if (invalidIds.length > 0) {
-      return res.json(
-        new ApiResponse(400, null, `Invalid product ID(s): ${invalidIds.join(", ")}`, false)
-      );
+    if (productIds.length > 0) {
+      const invalidIds = productIds.filter((id) => !mongoose.Types.ObjectId.isValid(id));
+      if (invalidIds.length > 0) {
+        return res.json(
+          new ApiResponse(400, null, `Invalid product ID(s): ${invalidIds.join(", ")}`, false)
+        );
+      }
     }
 
     data.products = productIds;

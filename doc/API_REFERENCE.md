@@ -448,24 +448,46 @@ All Shiprocket endpoints are protected by `adminOrSuperAdmin`.
 ### Public Catalog Queries
 - **`GET /api/product`**: List products with filtering:
   - Query parameters:
+    - `category`: Category ObjectId or name slug
+    - `is_best_seller` / `best_seller`: `true` | `false`
+    - `is_new_arrival` / `new_arrival`: `true` | `false`
     - `isDairy`: `true` (Filter dairy products)
-    - `dairyCategory`: `milk`, `curd`, `paneer`, `ghee`, `butter`, `sweets`
-    - `category`: Category ObjectId
-    - `sub_category`: SubCategory ObjectId
+    - `dairyCategory`: `milk`, `curd`, `paneer`, `ghee`, `butter`, `sweets`, `beverages`, `other`
     - `search`: Name search query
-    - `page`, `limit`: Pagination parameters
-- **`GET /api/product/:id`**: Product details by ID or slug.
+    - `page`, `per_page`: Pagination parameters (default: page=1, per_page=10)
+- **`GET /api/product/:id`**: Product details by ID (with populated `category`).
 - **`GET /api/product/recommendations`**: Recommended products.
 
 ### Admin Product Management
 | Method | Endpoint | Auth | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/api/product` | Admin | Create product with unit (`L`, `ml`, `kg`, `g`, `pack`), shelf life, price |
+| `POST` | `/api/product` | Admin | Create product (Multipart form: `images`, `banner_image`). Brand, sub-category, color, shade, bulk tiers removed. |
 | `PUT` | `/api/product/:id` | Admin | Full product update |
 | `DELETE`| `/api/product/:id` | Admin | Delete product |
-| `POST` | `/api/product/bulk` | Admin | Bulk product upload via Excel (.xlsx) |
-| `GET` | `/api/product/export` | Admin | Export product catalog to Excel |
-| `GET` | `/api/product/sample` | Admin | Download Excel import template |
+
+#### Product Creation / Update Payload Format:
+- **`POST /api/product`** & **`PUT /api/product/:id`** (`multipart/form-data` or `application/json`):
+```json
+{
+  "name": "Fresh Cow Milk 1L",
+  "sku": "MILK-COW-1L",
+  "price": 66,
+  "discounted_price": 62,
+  "category": "673f8a...",
+  "unit": "1L",
+  "isDairy": true,
+  "dairyCategory": "milk",
+  "inventory": 50,
+  "status": "published",
+  "attributes": {
+    "is_best_seller": true,
+    "is_new_arrival": true
+  },
+  "is_best_seller": true,
+  "is_new_arrival": true
+}
+```
+*(Note: `brand`, `sub_category`, `color`, `shade_name`, and `price_tiers` are completely removed. Only `category` is used).*
 
 ---
 

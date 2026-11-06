@@ -27,23 +27,18 @@ const getBannerById = async (id) => {
 
 const createBanner = async (data) => {
   const productIds = data.products || (data.product ? [data.product] : []);
-  if (productIds.length === 0) {
-    return {
-      success: false,
-      error: "product_required",
-      message: "At least one product is required",
-    };
-  }
 
-  const foundProducts = await Product.find({ _id: { $in: productIds } }).select("_id");
-  if (foundProducts.length !== productIds.length) {
-    const foundSet = new Set(foundProducts.map((p) => p._id.toString()));
-    const missingIds = productIds.filter((id) => !foundSet.has(String(id)));
-    return {
-      success: false,
-      error: "product_not_found",
-      message: `Product(s) not found: ${missingIds.join(", ")}`,
-    };
+  if (productIds.length > 0) {
+    const foundProducts = await Product.find({ _id: { $in: productIds } }).select("_id");
+    if (foundProducts.length !== productIds.length) {
+      const foundSet = new Set(foundProducts.map((p) => p._id.toString()));
+      const missingIds = productIds.filter((id) => !foundSet.has(String(id)));
+      return {
+        success: false,
+        error: "product_not_found",
+        message: `Product(s) not found: ${missingIds.join(", ")}`,
+      };
+    }
   }
 
   const bannerData = {
@@ -63,23 +58,17 @@ const updateBanner = async (id, data) => {
   }
 
   if (productIds) {
-    if (productIds.length === 0) {
-      return {
-        success: false,
-        error: "product_required",
-        message: "At least one product is required",
-      };
-    }
-
-    const foundProducts = await Product.find({ _id: { $in: productIds } }).select("_id");
-    if (foundProducts.length !== productIds.length) {
-      const foundSet = new Set(foundProducts.map((p) => p._id.toString()));
-      const missingIds = productIds.filter((id) => !foundSet.has(String(id)));
-      return {
-        success: false,
-        error: "product_not_found",
-        message: `Product(s) not found: ${missingIds.join(", ")}`,
-      };
+    if (productIds.length > 0) {
+      const foundProducts = await Product.find({ _id: { $in: productIds } }).select("_id");
+      if (foundProducts.length !== productIds.length) {
+        const foundSet = new Set(foundProducts.map((p) => p._id.toString()));
+        const missingIds = productIds.filter((id) => !foundSet.has(String(id)));
+        return {
+          success: false,
+          error: "product_not_found",
+          message: `Product(s) not found: ${missingIds.join(", ")}`,
+        };
+      }
     }
 
     data.products = productIds;
