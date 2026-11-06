@@ -142,9 +142,14 @@ const verifyPayment = asyncHandler(async (req, res) => {
  * Duplication-safe: prevents duplicate pickups and duplicate commissions
  */
 const verifyPickupOtp = asyncHandler(async (req, res) => {
-  const { orderId, orderNumber, otp } = req.body;
+  const { orderId, orderNumber, otp, pickupOtp } = req.body;
+  const resolvedOtp = (otp !== undefined && otp !== null && String(otp).trim() !== "")
+    ? String(otp).trim()
+    : (pickupOtp !== undefined && pickupOtp !== null)
+    ? String(pickupOtp).trim()
+    : null;
 
-  if (!otp) {
+  if (!resolvedOtp) {
     return res
       .status(400)
       .json(new ApiResponse(400, null, "Pickup OTP is required", false));
@@ -154,7 +159,7 @@ const verifyPickupOtp = asyncHandler(async (req, res) => {
     const result = await DairyOrderService.verifyPickupOtp({
       orderId,
       orderNumber,
-      otp,
+      otp: resolvedOtp,
       staffAdmin: req.admin,
     });
 
