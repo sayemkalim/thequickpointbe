@@ -25,6 +25,7 @@ const StockMovementSchema = new mongoose.Schema(
         "adjustment",
         "damage",
         "order_cancelled",
+        "outlet_dispatch",
       ],
       required: true,
     },
@@ -42,7 +43,7 @@ const StockMovementSchema = new mongoose.Schema(
     },
     reference_type: {
       type: String,
-      enum: ["order", "manual", "import"],
+      enum: ["order", "manual", "import", "outlet"],
       default: "manual",
     },
     reference_id: {

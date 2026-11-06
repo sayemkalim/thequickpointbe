@@ -70,5 +70,14 @@ describe("Product Schema & Add/Edit Requirements", () => {
     const validationError = product.validateSync();
     assert.strictEqual(validationError, undefined, "Price tiers should not be required");
   });
+
+  it("FranchiseInventoryService and FranchiseService export required methods", () => {
+    const FranchiseInventoryService = require("../services/franchiseInventory/index");
+    const FranchiseService = require("../services/franchise/index");
+
+    assert.strictEqual(typeof FranchiseInventoryService.reserveStockForOrder, "function");
+    assert.strictEqual(typeof FranchiseInventoryService.restock, "function");
+    assert.strictEqual(typeof FranchiseService.checkOutletStock, "function");
+  });
 });
 

@@ -97,6 +97,28 @@ class FranchiseInventoryService {
       setDefaultsOnInsert: true,
     });
 
+    // Deduct restocked units from Central Inventory so outlet inventory is managed via central warehouse
+    try {
+      const InventoryService = require("../inventory/index.js");
+      const Franchise = require("../../models/franchiseModel");
+      const franchise = await Franchise.findById(franchiseId).select("name").lean();
+      const franchiseName = franchise?.name || String(franchiseId);
+
+      await InventoryService.adjustStock({
+        productId,
+        variantSku: variantSku || null,
+        quantityChange: -qty,
+        type: "outlet_dispatch",
+        note: `Dispatched to outlet: ${franchiseName}`,
+        adminId,
+        referenceType: "outlet",
+        referenceId: franchiseId,
+        allowNegative: true,
+      });
+    } catch (centralErr) {
+      console.warn("Could not adjust central inventory on outlet restock:", centralErr.message);
+    }
+
     return inventory;
   }
 
