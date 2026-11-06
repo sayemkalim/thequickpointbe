@@ -10,6 +10,7 @@ const getAllProducts = async ({
   category,
   sub_category,
   is_best_seller,
+  is_new_arrival,
   is_imported_picks,
   is_bakery,
   search,
@@ -102,9 +103,12 @@ const getAllProducts = async ({
     }
     
     if (subCategoryIds.length > 0) {
-      match.sub_category = { $in: subCategoryIds };
+      match.$or = [
+        { category: { $in: foundCategoryIds } },
+        { sub_category: { $in: subCategoryIds } },
+      ];
     } else {
-      return { data: [], total: 0 };
+      match.category = { $in: foundCategoryIds };
     }
   } else if (sub_category) {
     console.log("Filtering by sub_category only:", sub_category);
@@ -153,6 +157,11 @@ const getAllProducts = async ({
   if (is_best_seller !== undefined && is_best_seller !== null) {
     const bestSellerValue = is_best_seller === 'true' || is_best_seller === true;
     match.is_best_seller = bestSellerValue;
+  }
+
+  if (is_new_arrival !== undefined && is_new_arrival !== null) {
+    const newArrivalValue = is_new_arrival === 'true' || is_new_arrival === true;
+    match.is_new_arrival = newArrivalValue;
   }
   
   if (is_imported_picks !== undefined && is_imported_picks !== null) {
@@ -283,7 +292,7 @@ const getAllProducts = async ({
 };
 
 const getProductById = async (id) => {
-  return await Product.findById(id);
+  return await Product.findById(id).populate("category", "name slug image");
 };
 
 const createProduct = async (data) => {
@@ -294,7 +303,7 @@ const updateProduct = async (id, data) => {
   return await Product.findByIdAndUpdate(id, data, {
     new: true,
     runValidators: true,
-  });
+  }).populate("category", "name slug image");
 };
 
 const deleteProduct = async (id) => {
@@ -306,6 +315,7 @@ const getProductsByAdmin = async ({ id, filters, page, per_page }) => {
   const limit = parseInt(per_page);
 
   return await Product.find({ ...filters, created_by_admin: id })
+    .populate("category", "name slug image")
     .sort({
       createdAt: -1,
     })

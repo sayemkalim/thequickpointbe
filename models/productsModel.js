@@ -102,6 +102,21 @@ const ProductSchema = new mongoose.Schema(
     is_best_seller: {
       type: Boolean,
       default: false,
+      index: true,
+    },
+    is_new_arrival: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    attributes: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {
+        is_best_seller: false,
+        is_new_arrival: false,
+        best_seller: false,
+        new_arrival: false,
+      },
     },
     // Dairy-specific platform extensions
     isDairy: {
@@ -134,13 +149,12 @@ const ProductSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
       default: null,
+      index: true,
     },
     sub_category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "SubCategory",
-      required: function () {
-        return !this.isDairy;
-      },
+      default: null,
     },
     created_by_admin: {
       type: mongoose.Schema.Types.ObjectId,

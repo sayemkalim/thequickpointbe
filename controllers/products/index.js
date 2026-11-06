@@ -65,6 +65,9 @@ const getAllProducts = asyncHandler(async (req, res) => {
     rating,
     sub_category,
     is_best_seller,
+    best_seller,
+    is_new_arrival,
+    new_arrival,
     is_imported_picks,
     is_bakery,
     search,
@@ -94,12 +97,16 @@ const getAllProducts = asyncHandler(async (req, res) => {
   const processedSubCategory = processArrayParam(sub_category);
   const processedBrands = processArrayParam(brands);
 
+  const effectiveBestSeller = is_best_seller !== undefined ? is_best_seller : best_seller;
+  const effectiveNewArrival = is_new_arrival !== undefined ? is_new_arrival : new_arrival;
+
   const products = await ProductsServices.getAllProducts({
     page: parseInt(page, 10),
     per_page: parseInt(per_page, 10),
     category: processedCategory,
     sub_category: processedSubCategory,
-    is_best_seller,
+    is_best_seller: effectiveBestSeller,
+    is_new_arrival: effectiveNewArrival,
     is_imported_picks,
     is_bakery,
     search,
@@ -310,17 +317,59 @@ const createProduct = asyncHandler(async (req, res) => {
     ? await uploadSingleFile(bannerImageFile.path, "uploads/images")
     : null;
 
-  let { meta_data, variants } = req.body;
+  let { meta_data, variants, attributes } = req.body;
 
   if (meta_data) {
     try {
-      meta_data = JSON.parse(meta_data);
+      meta_data = typeof meta_data === "string" ? JSON.parse(meta_data) : meta_data;
     } catch (error) {
       return res.json(
         new ApiResponse(400, null, "Invalid meta_data format", false)
       );
     }
   }
+
+  // Parse attributes (supports best_seller, new_arrival, is_best_seller, is_new_arrival)
+  if (attributes && typeof attributes === "string") {
+    try {
+      attributes = JSON.parse(attributes);
+    } catch {
+      attributes = {};
+    }
+  }
+  if (!attributes || typeof attributes !== "object") {
+    attributes = {};
+  }
+
+  const isBestSeller =
+    attributes.is_best_seller !== undefined
+      ? Boolean(attributes.is_best_seller === true || attributes.is_best_seller === "true")
+      : attributes.best_seller !== undefined
+      ? Boolean(attributes.best_seller === true || attributes.best_seller === "true")
+      : req.body.is_best_seller !== undefined
+      ? Boolean(req.body.is_best_seller === true || req.body.is_best_seller === "true")
+      : req.body.best_seller !== undefined
+      ? Boolean(req.body.best_seller === true || req.body.best_seller === "true")
+      : false;
+
+  const isNewArrival =
+    attributes.is_new_arrival !== undefined
+      ? Boolean(attributes.is_new_arrival === true || attributes.is_new_arrival === "true")
+      : attributes.new_arrival !== undefined
+      ? Boolean(attributes.new_arrival === true || attributes.new_arrival === "true")
+      : req.body.is_new_arrival !== undefined
+      ? Boolean(req.body.is_new_arrival === true || req.body.is_new_arrival === "true")
+      : req.body.new_arrival !== undefined
+      ? Boolean(req.body.new_arrival === true || req.body.new_arrival === "true")
+      : false;
+
+  const normalizedAttributes = {
+    ...attributes,
+    is_best_seller: isBestSeller,
+    is_new_arrival: isNewArrival,
+    best_seller: isBestSeller,
+    new_arrival: isNewArrival,
+  };
 
   if (variants && typeof variants === "string") {
     try {
@@ -333,27 +382,6 @@ const createProduct = asyncHandler(async (req, res) => {
   }
 
   if (Array.isArray(variants)) {
-    for (let idx = 0; idx < variants.length; idx++) {
-      const variant = variants[idx];
-      if (variant.color_name === undefined && variant.colorName !== undefined) {
-        variant.color_name = variant.colorName;
-      }
-      if (variant.price_tiers !== undefined) {
-        const vTierRes = parsePriceTiers(variant.price_tiers);
-        if (vTierRes.error) {
-          return res.status(400).json(
-            new ApiResponse(
-              400,
-              null,
-              `Variant ${variant.sku || idx + 1}: ${vTierRes.error}`,
-              false
-            )
-          );
-        }
-        variant.price_tiers = vTierRes.value || [];
-      }
-    }
-
     variants = await Promise.all(
       variants.map(async (variant, idx) => {
         const variantImageFiles = files.filter(
@@ -369,39 +397,48 @@ const createProduct = asyncHandler(async (req, res) => {
           variantImages = variant.images;
         }
 
+        // Clean variant: remove color, color_name, shade_name, price_tiers (bulk system)
+        const {
+          color,
+          color_name,
+          colorName,
+          shade_name,
+          shadeName,
+          price_tiers,
+          ...cleanVariant
+        } = variant;
+
         return {
-          ...variant,
-          color: variant.color !== undefined ? variant.color : null,
-          color_name:
-            variant.color_name !== undefined
-              ? variant.color_name
-              : variant.colorName !== undefined
-              ? variant.colorName
-              : null,
+          ...cleanVariant,
           images: variantImages,
         };
       })
     );
   }
 
-  const priceTiersResult = parsePriceTiers(req.body.price_tiers);
-  if (priceTiersResult.error) {
-    return res
-      .status(400)
-      .json(new ApiResponse(400, null, priceTiersResult.error, false));
-  }
-
-  const color_name =
-    req.body.color_name !== undefined ? req.body.color_name : req.body.colorName;
+  // Remove unwanted fields: brand, sub_category, color, shade, price_tiers (bulk system)
+  const {
+    brand,
+    sub_category,
+    color,
+    color_name,
+    colorName,
+    shade_name,
+    shadeName,
+    price_tiers,
+    ...restBody
+  } = req.body;
 
   const productData = {
-    ...req.body,
-    ...(color_name !== undefined ? { color_name } : {}),
+    ...restBody,
     images: imageUrls,
     banner_image: bannerImageUrl,
     meta_data,
     variants,
-    price_tiers: priceTiersResult.value,
+    attributes: normalizedAttributes,
+    is_best_seller: isBestSeller,
+    is_new_arrival: isNewArrival,
+    created_by_admin: req.admin?._id || restBody.created_by_admin,
   };
 
   if (productData.inventory === undefined) productData.inventory = 0;
@@ -475,17 +512,63 @@ const updateProduct = asyncHandler(async (req, res) => {
     bannerImageUrl = null;
   }
 
-  let { meta_data, variants } = req.body;
+  let { meta_data, variants, attributes } = req.body;
 
   if (meta_data) {
     try {
-      meta_data = JSON.parse(meta_data);
+      meta_data = typeof meta_data === "string" ? JSON.parse(meta_data) : meta_data;
     } catch (error) {
       return res.json(
         new ApiResponse(400, null, "Invalid meta_data format", false)
       );
     }
   }
+
+  // Parse attributes
+  if (attributes && typeof attributes === "string") {
+    try {
+      attributes = JSON.parse(attributes);
+    } catch {
+      attributes = {};
+    }
+  }
+  if (!attributes && typeof attributes !== "object") {
+    attributes = product.attributes || {};
+  } else if (!attributes) {
+    attributes = {};
+  }
+
+  // Determine updated best seller & new arrival flags
+  let isBestSeller = product.is_best_seller || false;
+  if (attributes.is_best_seller !== undefined) {
+    isBestSeller = Boolean(attributes.is_best_seller === true || attributes.is_best_seller === "true");
+  } else if (attributes.best_seller !== undefined) {
+    isBestSeller = Boolean(attributes.best_seller === true || attributes.best_seller === "true");
+  } else if (req.body.is_best_seller !== undefined) {
+    isBestSeller = Boolean(req.body.is_best_seller === true || req.body.is_best_seller === "true");
+  } else if (req.body.best_seller !== undefined) {
+    isBestSeller = Boolean(req.body.best_seller === true || req.body.best_seller === "true");
+  }
+
+  let isNewArrival = product.is_new_arrival || false;
+  if (attributes.is_new_arrival !== undefined) {
+    isNewArrival = Boolean(attributes.is_new_arrival === true || attributes.is_new_arrival === "true");
+  } else if (attributes.new_arrival !== undefined) {
+    isNewArrival = Boolean(attributes.new_arrival === true || attributes.new_arrival === "true");
+  } else if (req.body.is_new_arrival !== undefined) {
+    isNewArrival = Boolean(req.body.is_new_arrival === true || req.body.is_new_arrival === "true");
+  } else if (req.body.new_arrival !== undefined) {
+    isNewArrival = Boolean(req.body.new_arrival === true || req.body.new_arrival === "true");
+  }
+
+  const updatedAttributes = {
+    ...(product.attributes || {}),
+    ...attributes,
+    is_best_seller: isBestSeller,
+    is_new_arrival: isNewArrival,
+    best_seller: isBestSeller,
+    new_arrival: isNewArrival,
+  };
 
   if (variants && typeof variants === "string") {
     try {
@@ -499,33 +582,6 @@ const updateProduct = asyncHandler(async (req, res) => {
 
   // For each variant, keep URLs, upload only new files, preserve existing variant images
   if (Array.isArray(variants)) {
-    for (let idx = 0; idx < variants.length; idx++) {
-      const variant = variants[idx];
-      if (variant.color_name === undefined && variant.colorName !== undefined) {
-        variant.color_name = variant.colorName;
-      }
-      const existingVariant = product.variants?.find(
-        (v) => (variant.sku && v.sku === variant.sku) || (variant._id && v._id?.toString() === variant._id?.toString())
-      ) || product.variants?.[idx];
-
-      if (variant.price_tiers !== undefined) {
-        const vTierRes = parsePriceTiers(variant.price_tiers);
-        if (vTierRes.error) {
-          return res.status(400).json(
-            new ApiResponse(
-              400,
-              null,
-              `Variant ${variant.sku || idx + 1}: ${vTierRes.error}`,
-              false
-            )
-          );
-        }
-        variant.price_tiers = vTierRes.value || [];
-      } else if (existingVariant && existingVariant.price_tiers) {
-        variant.price_tiers = existingVariant.price_tiers;
-      }
-    }
-
     variants = await Promise.all(
       variants.map(async (variant, idx) => {
         const existingVariant = product.variants?.find(
@@ -576,39 +632,48 @@ const updateProduct = asyncHandler(async (req, res) => {
             ? [...existingVariantImgs, ...uploadedVUrls]
             : existingVariantImgs;
         }
+
+        // Clean variant: remove color, color_name, shade_name, price_tiers (bulk system)
+        const {
+          color,
+          color_name,
+          colorName,
+          shade_name,
+          shadeName,
+          price_tiers,
+          ...cleanVariant
+        } = variant;
+
         return {
-          ...variant,
-          color: variant.color !== undefined ? variant.color : (existingVariant?.color || null),
-          color_name:
-            variant.color_name !== undefined
-              ? variant.color_name
-              : variant.colorName !== undefined
-              ? variant.colorName
-              : (existingVariant?.color_name || null),
+          ...cleanVariant,
           images: variantImages,
         };
       })
     );
   }
 
-  const priceTiersResult = parsePriceTiers(req.body.price_tiers);
-  if (priceTiersResult.error) {
-    return res
-      .status(400)
-      .json(new ApiResponse(400, null, priceTiersResult.error, false));
-  }
-
-  const color_name =
-    req.body.color_name !== undefined ? req.body.color_name : req.body.colorName;
+  // Remove unwanted fields: brand, sub_category, color, shade, price_tiers (bulk system)
+  const {
+    brand,
+    sub_category,
+    color,
+    color_name,
+    colorName,
+    shade_name,
+    shadeName,
+    price_tiers,
+    ...restBody
+  } = req.body;
 
   const productData = {
-    ...req.body,
-    ...(color_name !== undefined ? { color_name } : {}),
+    ...restBody,
     images: productImages,
     banner_image: bannerImageUrl,
     meta_data,
-    variants,
-    price_tiers: priceTiersResult.value,
+    ...(variants ? { variants } : {}),
+    attributes: updatedAttributes,
+    is_best_seller: isBestSeller,
+    is_new_arrival: isNewArrival,
   };
 
   if (productData.inventory === undefined)

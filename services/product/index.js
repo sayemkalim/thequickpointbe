@@ -10,6 +10,7 @@ const getAllProducts = async ({
   category,
   sub_category,
   is_best_seller,
+  is_new_arrival,
   is_imported_picks,
   is_bakery,
   search,
@@ -18,20 +19,13 @@ const getAllProducts = async ({
   rating,
   brands
 }) => {
-  console.log("category", category);
-  console.log("sub_category", sub_category);
-  console.log("brands", brands);
-  console.log("is_best_seller", is_best_seller);
-  console.log("is_imported_picks", is_imported_picks);
-  console.log("is_bakery", is_bakery);
-  console.log("search", search);
-  console.log("price_range", price_range);
   return await ProductsRepository.getAllProducts({
     page,
     per_page,
     category,
     sub_category,
     is_best_seller,
+    is_new_arrival,
     is_imported_picks,
     is_bakery,
     search,
