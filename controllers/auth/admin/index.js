@@ -7,15 +7,22 @@ const {
 } = require("../../../utils/auth");
 
 const getAllAdmins = asyncHandler(async (req, res) => {
-  const { search = "", page = 1, per_page = 50 } = req.query;
+  const { search = "", page = 1, per_page = 50, role } = req.query;
 
-  const superAdminId = req.admin._id;
+  const adminUser = req.admin;
 
-  if (!superAdminId) {
-    return res.json(new ApiResponse(404, null, "Not authorized"));
+  if (!adminUser) {
+    return res.status(401).json(new ApiResponse(401, null, "Not authorized", false));
   }
 
-  const query = { role: "admin" };
+  const query = {};
+
+  if (role && role !== "all") {
+    query.role = role;
+  } else {
+    // Return all staff & admin roles
+    query.role = { $in: ["admin", "franchise_owner", "sub_admin", "super_admin"] };
+  }
 
   if (search) {
     query.$or = [
@@ -27,7 +34,9 @@ const getAllAdmins = asyncHandler(async (req, res) => {
   const skip = (page - 1) * per_page;
 
   const admins = await Admin.find(query)
+    .populate("franchise", "name code address city district location")
     .select("-password")
+    .sort({ createdAt: -1 })
     .skip(skip)
     .limit(parseInt(per_page, 10));
 
@@ -45,7 +54,8 @@ const getAllAdmins = asyncHandler(async (req, res) => {
 
 const registerAdmin = asyncHandler(async (req, res) => {
   const { name, email, password, role, franchise, franchiseId } = req.body;
-  const adminExists = await Admin.findOne({ email });
+  const cleanEmail = email?.toLowerCase()?.trim();
+  const adminExists = await Admin.findOne({ email: cleanEmail });
 
   if (adminExists) {
     return res
@@ -54,22 +64,25 @@ const registerAdmin = asyncHandler(async (req, res) => {
   }
 
   const admin = await Admin.create({
-    name,
-    email,
+    name: name?.trim(),
+    email: cleanEmail,
     password,
     role: role || "admin",
     franchise: franchise || franchiseId || null,
   });
 
   const accessToken = generateAccessToken(admin._id);
-  //   const refreshToken = generateRefreshToken(admin._id);
+
+  const populatedAdmin = await Admin.findById(admin._id)
+    .populate("franchise", "name code address city district")
+    .select("-password");
 
   const data = {
     id: admin.id,
     name: admin.name,
     email: admin.email,
     role: admin.role,
-    franchise: admin.franchise,
+    franchise: populatedAdmin?.franchise || admin.franchise,
     token: accessToken,
   };
 
@@ -79,7 +92,10 @@ const registerAdmin = asyncHandler(async (req, res) => {
 const loginAdmin = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
 
-  const admin = await Admin.findOne({ email });
+  const admin = await Admin.findOne({ email: email?.toLowerCase()?.trim() }).populate(
+    "franchise",
+    "name code address city district"
+  );
   if (!admin || !(await admin.matchPassword(password))) {
     return res
       .status(401)
@@ -113,17 +129,19 @@ const updateAdmin = asyncHandler(async (req, res) => {
       .json(new ApiResponse(404, null, "Admin not found", false));
   }
 
-  if (name) admin.name = name;
-  if (email) admin.email = email;
+  if (name) admin.name = name.trim();
+  if (email) admin.email = email.toLowerCase().trim();
   if (role) admin.role = role;
   if (franchise !== undefined || franchiseId !== undefined) {
     admin.franchise = franchise || franchiseId || null;
   }
-  if (password) admin.password = password;
+  if (password && password.trim()) admin.password = password;
 
   await admin.save();
 
-  const updatedAdmin = await Admin.findById(id).select("-password");
+  const updatedAdmin = await Admin.findById(id)
+    .populate("franchise", "name code address city district")
+    .select("-password");
 
   res.json(
     new ApiResponse(200, updatedAdmin, "Admin updated successfully", true)
@@ -140,6 +158,12 @@ const deleteAdmin = asyncHandler(async (req, res) => {
       .json(new ApiResponse(404, null, "Admin not found", false));
   }
 
+  if (admin.role === "super_admin") {
+    return res
+      .status(403)
+      .json(new ApiResponse(403, null, "Cannot delete super_admin account", false));
+  }
+
   await admin.deleteOne();
 
   res.json(new ApiResponse(200, null, "Admin deleted successfully", true));
@@ -151,7 +175,9 @@ const getAllSubAdmins = asyncHandler(async (req, res) => {
   const subAdmins = await Admin.find({
     role: "sub_admin",
     created_by: adminId,
-  }).select("-password");
+  })
+    .populate("franchise", "name code address city district")
+    .select("-password");
 
   res.json(
     new ApiResponse(200, subAdmins, "Sub Admins fetched successfully", true)
@@ -164,15 +190,16 @@ const registerSubAdmin = asyncHandler(async (req, res) => {
   const reqAdmin = req.admin;
   const adminId = reqAdmin.id;
 
-  if (reqAdmin.role !== "admin") {
+  if (reqAdmin.role !== "admin" && reqAdmin.role !== "super_admin") {
     return res
       .status(400)
       .json(
-        new ApiResponse(400, null, "Only admin can create sub admin", false)
+        new ApiResponse(400, null, "Only central admins can create sub admin", false)
       );
   }
 
-  const admin = await Admin.findOne({ email });
+  const cleanEmail = email?.toLowerCase()?.trim();
+  const admin = await Admin.findOne({ email: cleanEmail });
 
   if (admin) {
     return res
@@ -181,8 +208,8 @@ const registerSubAdmin = asyncHandler(async (req, res) => {
   }
 
   const subAdmin = await Admin.create({
-    name,
-    email,
+    name: name?.trim(),
+    email: cleanEmail,
     password,
     role: "sub_admin",
     created_by: adminId,
@@ -207,7 +234,9 @@ const registerSubAdmin = asyncHandler(async (req, res) => {
 const getSingleAdmin = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const admin = await Admin.findById(id);
+  const admin = await Admin.findById(id)
+    .populate("franchise", "name code address city district location")
+    .select("-password");
   if (!admin) {
     return res
       .status(404)

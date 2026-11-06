@@ -195,14 +195,14 @@ Backend services for QuickPoint Dairy in Bihar:
             "application/json": {
               schema: {
                 type: "object",
-                required: ["name", "code", "phone", "latitude", "longitude"],
+                required: ["name", "code", "phone"],
                 properties: {
                   name: { type: "string", example: "QuickPoint Kankarbagh Outlet" },
                   code: { type: "string", example: "QP-PATNA-001" },
                   phone: { type: "string", example: "9876543210" },
                   email: { type: "string", example: "kankarbagh@quickpoint.in" },
-                  latitude: { type: "number", example: 25.5941 },
-                  longitude: { type: "number", example: 85.1376 },
+                  latitude: { type: "number", example: 25.5941, description: "Optional: Store latitude. Can be set later by outlet manager via GPS." },
+                  longitude: { type: "number", example: 85.1376, description: "Optional: Store longitude. Can be set later by outlet manager via GPS." },
                   radiusKm: { type: "number", default: 15 },
                   address: {
                     type: "object",
@@ -269,6 +269,35 @@ Backend services for QuickPoint Dairy in Bihar:
         ],
         responses: {
           200: { description: "Outlet deactivated or permanently deleted successfully" },
+          404: { description: "Outlet not found" },
+        },
+      },
+    },
+    "/api/dairy/outlets/{id}/location": {
+      patch: {
+        tags: ["Multi-Outlet Dairy Discovery"],
+        summary: "Set Outlet GPS Coordinates from Physical Store",
+        description: "Enables Franchise Owner (or Admin) to click 'Use Current Location' from the physical shop and lock high-precision GPS coordinates.",
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["latitude", "longitude"],
+                properties: {
+                  latitude: { type: "number", example: 25.5941, description: "Exact store latitude from device GPS" },
+                  longitude: { type: "number", example: 85.1376, description: "Exact store longitude from device GPS" },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: { description: "Store GPS coordinates set and marked verified" },
+          403: { description: "Unauthorized: Outlet owner can only set coordinates for their own outlet" },
           404: { description: "Outlet not found" },
         },
       },

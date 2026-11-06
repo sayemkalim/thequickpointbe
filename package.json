@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "test": "node --test tests/dairy.test.js tests/sms.test.js",
+    "test": "node --test tests/dairy.test.js tests/sms.test.js tests/staff.test.js",
     "test:sms": "node --test tests/sms.test.js",
     "start": "node server.js",
     "dev": "nodemon server.js"

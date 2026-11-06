@@ -55,6 +55,7 @@ class FranchiseService {
       throw new Error(`Franchise outlet with code "${normalizedCode}" already exists.`);
     }
 
+    const hasExplicitCoordinates = latitude !== undefined && longitude !== undefined;
     const coordinates = [
       Number(longitude ?? 85.1376), // [lng, lat]
       Number(latitude ?? 25.5941),
@@ -71,6 +72,7 @@ class FranchiseService {
         type: "Point",
         coordinates,
       },
+      isLocationVerified: hasExplicitCoordinates,
       radiusKm: radiusKm ? Number(radiusKm) : 15,
       ownerAdmin: ownerAdmin || null,
       commissionOverride: commissionOverride || { enabled: false },
@@ -140,6 +142,7 @@ class FranchiseService {
         type: "Point",
         coordinates: [Number(data.longitude), Number(data.latitude)],
       };
+      franchise.isLocationVerified = true;
     }
 
     // Commission override update with audit note
@@ -200,6 +203,36 @@ class FranchiseService {
       franchise,
       hardDeleted: false,
     };
+  }
+
+  /**
+   * Set physical outlet coordinates (GPS) by Franchise Owner or Central Admin
+   */
+  async updateLocation(franchiseId, { latitude, longitude }) {
+    if (latitude === undefined || longitude === undefined) {
+      throw new Error("Both latitude and longitude are required");
+    }
+
+    const lat = Number(latitude);
+    const lng = Number(longitude);
+
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      throw new Error("Valid numerical latitude (-90 to 90) and longitude (-180 to 180) are required");
+    }
+
+    const franchise = await Franchise.findById(franchiseId);
+    if (!franchise) {
+      throw new Error("Franchise outlet not found");
+    }
+
+    franchise.location = {
+      type: "Point",
+      coordinates: [lng, lat],
+    };
+    franchise.isLocationVerified = true;
+    await franchise.save();
+
+    return franchise;
   }
 
   /**

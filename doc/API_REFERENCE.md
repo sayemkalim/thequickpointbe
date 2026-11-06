@@ -187,6 +187,35 @@ Authorization: Bearer <jwt_access_token>
   }
   ```
 
+#### Set Outlet GPS Location from Physical Store
+- **Method & Path:** `PATCH /api/dairy/outlets/:id/location` or `PUT /api/dairy/outlets/:id/location`
+- **Auth:** Central Admin OR Assigned `franchise_owner`
+- **Purpose:** Allows the franchise manager/store staff to click "📍 Use Current Location" directly on their mobile/laptop browser from the physical shop, capturing high-accuracy device GPS without manual typing.
+- **Request Body:**
+  ```json
+  {
+    "latitude": 25.594095,
+    "longitude": 85.137566
+  }
+  ```
+- **Response `200 OK`:**
+  ```json
+  {
+    "statusCode": 200,
+    "success": true,
+    "message": "Outlet GPS location set successfully",
+    "data": {
+      "_id": "673f8a...",
+      "name": "QuickPoint Kankarbagh Outlet",
+      "isLocationVerified": true,
+      "location": {
+        "type": "Point",
+        "coordinates": [85.137566, 25.594095]
+      }
+    }
+  }
+  ```
+
 #### Regenerate Outlet QR Code
 - **Method & Path:** `POST /api/dairy/outlets/:id/regenerate-qr`
 - **Auth:** Central Admin

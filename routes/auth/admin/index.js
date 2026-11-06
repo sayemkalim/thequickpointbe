@@ -11,22 +11,21 @@ const {
   getSingleAdmin,
 } = require("../../../controllers/auth/admin/index");
 const {
-  admin,
-  superAdmin,
+  centralAdmin,
 } = require("../../../middleware/auth/adminMiddleware");
 
 const router = express.Router();
 
-router.get("/", superAdmin, getAllAdmins);
-router.post("/register", registerAdmin);
+router.get("/", centralAdmin, getAllAdmins);
+router.post("/register", centralAdmin, registerAdmin);
 router.post("/login", loginAdmin);
 router.post("/forgot-password", forgotPassword);
-router.get("/sub-admin", admin, getAllSubAdmins);
-router.post("/sub-admin", admin, registerSubAdmin);
-router.get("/:id", superAdmin, getSingleAdmin);
+router.get("/sub-admin", centralAdmin, getAllSubAdmins);
+router.post("/sub-admin", centralAdmin, registerSubAdmin);
+router.get("/:id", centralAdmin, getSingleAdmin);
 
-// DEVELOPMENT API's
-router.patch("/edit/:id", updateAdmin);
-router.delete("/delete/:id", deleteAdmin);
+// Operational & Staff Management APIs
+router.patch("/edit/:id", centralAdmin, updateAdmin);
+router.delete("/delete/:id", centralAdmin, deleteAdmin);
 
 module.exports = router;

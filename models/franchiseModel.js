@@ -64,6 +64,11 @@ const FranchiseSchema = new mongoose.Schema(
       min: 1,
       max: 100,
     },
+    // True when coordinates have been captured by GPS or set explicitly
+    isLocationVerified: {
+      type: Boolean,
+      default: false,
+    },
     // Outlet QR code ordering
     qrToken: {
       type: String,

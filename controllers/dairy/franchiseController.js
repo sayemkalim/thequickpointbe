@@ -152,6 +152,34 @@ const regenerateQrCode = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Franchise Owner / Admin: Set outlet GPS coordinates directly from store
+ * Allows outlet manager to click "Set Store Location" from physical shop
+ */
+const updateOutletLocation = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { latitude, longitude } = req.body;
+
+    // Security check: If caller is franchise_owner, verify they own this outlet
+    if (req.admin.role === "franchise_owner") {
+      if (!req.admin.franchise || String(req.admin.franchise) !== String(id)) {
+        return res.status(403).json(
+          new ApiResponse(403, null, "Unauthorized: You can only set coordinates for your assigned outlet.", false)
+        );
+      }
+    }
+
+    const franchise = await FranchiseService.updateLocation(id, { latitude, longitude });
+    return res.status(200).json(
+      new ApiResponse(200, franchise, "Outlet GPS location set successfully", true)
+    );
+  } catch (error) {
+    const statusCode = error.message.includes("not found") ? 404 : 400;
+    return res.status(statusCode).json(new ApiResponse(statusCode, null, error.message, false));
+  }
+});
+
 module.exports = {
   getNearbyOutlets,
   scanOutletQr,
@@ -161,4 +189,5 @@ module.exports = {
   updateFranchise,
   deleteFranchise,
   regenerateQrCode,
+  updateOutletLocation,
 };
