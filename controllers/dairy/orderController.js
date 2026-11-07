@@ -17,8 +17,11 @@ const checkout = asyncHandler(async (req, res) => {
     customerName,
     customerPhone,
     customerEmail,
-    paymentGateway = "razorpay",
+    paymentGateway = "cashfree",
     isQrLocked = false,
+    fulfillmentType = "pickup",
+    address = null,
+    shippingCost = 0,
   } = req.body;
 
   if (!franchiseId || !items || !Array.isArray(items) || items.length === 0) {
@@ -44,6 +47,9 @@ const checkout = asyncHandler(async (req, res) => {
       customerPhone: userPhone,
       customerEmail: customerEmail || req.user?.email,
       isQrLocked: Boolean(isQrLocked),
+      fulfillmentType,
+      address,
+      shippingCost,
     });
 
     return res.status(201).json(
@@ -52,12 +58,18 @@ const checkout = asyncHandler(async (req, res) => {
         {
           order: result.order,
           gatewayDetails: result.gatewayDetails,
-          pickupDetails: {
-            fulfillmentType: "pickup",
+          fulfillmentDetails: {
+            fulfillmentType: result.order.fulfillmentType,
             franchiseId,
+            pickupOtp: result.order.pickupOtp || null,
+          },
+          pickupDetails: {
+            fulfillmentType: result.order.fulfillmentType,
+            franchiseId,
+            pickupOtp: result.order.pickupOtp || null,
           },
         },
-        "Dairy order initiated and stock reserved successfully",
+        "Order initiated and stock reserved successfully",
         true
       )
     );
@@ -72,10 +84,11 @@ const checkout = asyncHandler(async (req, res) => {
 const verifyPayment = asyncHandler(async (req, res) => {
   const {
     orderId,
+    cashfree_payment_id,
     razorpay_order_id,
     razorpay_payment_id,
     razorpay_signature,
-    gateway = "razorpay",
+    gateway = "cashfree",
   } = req.body;
 
   const order = await Order.findById(orderId);
@@ -90,7 +103,13 @@ const verifyPayment = asyncHandler(async (req, res) => {
     );
   }
 
-  if (gateway === "razorpay") {
+  if (gateway === "cashfree" || !gateway) {
+    await DairyOrderService.confirmOrderPayment(
+      order,
+      cashfree_payment_id || req.body.cashfree_payment_id || `cf_pay_${Date.now()}`,
+      "cashfree"
+    );
+  } else if (gateway === "razorpay") {
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     if (!keySecret && process.env.NODE_ENV !== "test") {
       return res

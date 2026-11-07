@@ -29,6 +29,9 @@ class DairyOrderService {
     customerPhone,
     customerEmail = null,
     isQrLocked = false,
+    fulfillmentType = "pickup",
+    address = null,
+    shippingCost = 0,
   }) {
     if (!franchiseId) {
       throw new Error("Franchise outlet selection is required for dairy orders.");
@@ -115,19 +118,19 @@ class DairyOrderService {
         email: customerEmail || user?.email || null,
       },
       items: orderItems,
-      fulfillmentType: "pickup",
+      fulfillmentType: fulfillmentType === "delivery" ? "delivery" : "pickup",
       franchise: franchise._id,
-      address: null, // Pickup order requires no customer home address
+      address: fulfillmentType === "delivery" ? address : null,
       totalAmount: calculatedTotalAmount,
       discountedTotalAmount: calculatedTotalAmount,
-      finalTotalAmount: calculatedTotalAmount,
-      shippingCost: 0, // No shipping fee for pickup
+      finalTotalAmount: calculatedTotalAmount + (fulfillmentType === "delivery" ? Number(shippingCost || 0) : 0),
+      shippingCost: fulfillmentType === "delivery" ? Number(shippingCost || 0) : 0,
       status: "pending",
       paymentStatus: "pending",
       paymentMode: "ONLINE",
-      pickupStatus: "pending",
-      pickupOtp,
-      pickupOtpExpires,
+      pickupStatus: fulfillmentType === "delivery" ? "ready_for_pickup" : "pending",
+      pickupOtp: fulfillmentType === "delivery" ? null : pickupOtp,
+      pickupOtpExpires: fulfillmentType === "delivery" ? null : pickupOtpExpires,
     });
 
     // 6. Calculate immutable commission snapshot
@@ -140,7 +143,7 @@ class DairyOrderService {
     // 7. Initialize Payment Gateway Order
     let gatewayOrderDetails = null;
 
-    if (paymentGateway === "cashfree") {
+    if (paymentGateway === "cashfree" || !paymentGateway) {
       const isCfEnabled = await CashfreeProvider.isEnabled();
       if (isCfEnabled) {
         gatewayOrderDetails = await CashfreeProvider.createPaymentSession({
