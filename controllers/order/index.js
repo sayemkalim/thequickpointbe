@@ -326,6 +326,7 @@ const exportOrders = asyncHandler(async (req, res) => {
     // Fetch orders with user, address, and items populated
     if (req.admin?.role === "franchise_owner") {
       dateFilter.franchise = req.admin.franchise;
+      dateFilter.fulfillmentType = "pickup"; // Only store pickup orders for outlets
     }
     const orders = await Order.find(dateFilter)
       .populate("user")
@@ -341,7 +342,7 @@ const exportOrders = asyncHandler(async (req, res) => {
       userEmail: order.user?.email || "",
       userPhone: order.user?.phone || order.address?.mobile || order.guestInfo?.mobile || "",
       address: order.address
-        ? `${order.address.address || ""}, ${order.address.city || ""}, ${order.address.state || ""}, ${order.address.pincode || ""}`
+        ? `${order.address.street || order.address.address || ""}, ${order.address.city || ""}, ${order.address.state || ""}, ${order.address.pincode || ""}`
         : "",
       items: order.items
         .map((item) => `${item.product?.name || ""} (x${item.quantity})`)
@@ -478,6 +479,8 @@ const getAllOrders = asyncHandler(async (req, res) => {
         return res.status(403).json(new ApiResponse(403, null, "No franchise outlet assigned to this franchise owner account", false));
       }
       query.franchise = req.admin.franchise;
+      // Pan India / delivery orders are strictly hidden from franchise outlets
+      query.fulfillmentType = "pickup";
     } else if (req.query.franchiseId && req.query.franchiseId !== "all") {
       if (mongoose.Types.ObjectId.isValid(req.query.franchiseId)) {
         query.franchise = new mongoose.Types.ObjectId(req.query.franchiseId);
@@ -493,12 +496,30 @@ const getAllOrders = asyncHandler(async (req, res) => {
       Order.countDocuments(query),
     ]);
 
+    const sanitizedOrders = orders.map((o) => {
+      const orderObj = o.toObject ? o.toObject() : { ...o };
+      if (orderObj.address) {
+        orderObj.address.street =
+          orderObj.address.street ||
+          orderObj.address.address_line ||
+          orderObj.address.address ||
+          orderObj.address.locality ||
+          "";
+        orderObj.address.address_line =
+          orderObj.address.address_line ||
+          orderObj.address.street ||
+          orderObj.address.address ||
+          "";
+      }
+      return orderObj;
+    });
+
     return res
       .status(200)
       .json(
         new ApiResponse(
           200,
-          { data: orders, total },
+          { data: sanitizedOrders, total },
           "Orders fetched successfully",
           true,
         ),
@@ -1478,13 +1499,29 @@ const getOrderById = asyncHandler(async (req, res) => {
     return res.status(404).json(new ApiResponse(404, null, "Order not found", false));
   }
   if (req.admin.role === "franchise_owner") {
-    if (order.franchise && String(order.franchise._id || order.franchise) !== String(req.admin.franchise)) {
-      return res.status(403).json(new ApiResponse(403, null, "Access denied: This order belongs to another outlet.", false));
+    if (order.fulfillmentType === "delivery" || (order.franchise && String(order.franchise._id || order.franchise) !== String(req.admin.franchise))) {
+      return res.status(403).json(new ApiResponse(403, null, "Access denied: This order belongs to another outlet or is a Pan India delivery order.", false));
     }
   }
+
+  const orderObj = order.toObject ? order.toObject() : { ...order };
+  if (orderObj.address) {
+    orderObj.address.street =
+      orderObj.address.street ||
+      orderObj.address.address_line ||
+      orderObj.address.address ||
+      orderObj.address.locality ||
+      "";
+    orderObj.address.address_line =
+      orderObj.address.address_line ||
+      orderObj.address.street ||
+      orderObj.address.address ||
+      "";
+  }
+
   return res
     .status(200)
-    .json(new ApiResponse(200, order, "Order fetched successfully", true));
+    .json(new ApiResponse(200, orderObj, "Order fetched successfully", true));
 });
 
 // Admin-only: returns the invoice PDF URL for an order so the admin FE can
@@ -1560,9 +1597,25 @@ const getOrderByIdFormUser = asyncHandler(async (req, res) => {
       .status(404)
       .json(new ApiResponse(404, null, "Order not found", false));
   }
+
+  const orderObj = order.toObject ? order.toObject() : { ...order };
+  if (orderObj.address) {
+    orderObj.address.street =
+      orderObj.address.street ||
+      orderObj.address.address_line ||
+      orderObj.address.address ||
+      orderObj.address.locality ||
+      "";
+    orderObj.address.address_line =
+      orderObj.address.address_line ||
+      orderObj.address.street ||
+      orderObj.address.address ||
+      "";
+  }
+
   return res
     .status(200)
-    .json(new ApiResponse(200, order, "Order fetched successfully", true));
+    .json(new ApiResponse(200, orderObj, "Order fetched successfully", true));
 });
 
 const editOrder = asyncHandler(async (req, res) => {

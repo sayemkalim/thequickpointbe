@@ -73,3 +73,4 @@ OutletStockLogSchema.index({ product: 1, createdAt: -1 });
 const OutletStockLog = mongoose.model("OutletStockLog", OutletStockLogSchema);
 
 module.exports = OutletStockLog;
+

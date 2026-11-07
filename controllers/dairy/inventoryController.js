@@ -31,8 +31,15 @@ const getOutletInventory = asyncHandler(async (req, res) => {
 
 /**
  * Restock an item in an outlet
+ * Restricted strictly to Super Admin & Admin ONLY
  */
 const restockItem = asyncHandler(async (req, res) => {
+  if (req.admin.role === "franchise_owner") {
+    return res.status(403).json(
+      new ApiResponse(403, null, "Franchise owners cannot restock outlet inventory. Only Super Admin and Admin are permitted.", false)
+    );
+  }
+
   const franchiseId = req.scopedFranchiseId || req.body.franchiseId;
   const { productId, variantSku, sku, quantity, lowStockThreshold } = req.body;
 

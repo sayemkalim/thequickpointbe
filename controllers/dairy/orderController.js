@@ -235,6 +235,7 @@ const getFranchiseOrders = asyncHandler(async (req, res) => {
 
   const query = {
     franchise: franchiseId,
+    fulfillmentType: "pickup", // Pan India / Delivery orders are strictly hidden from outlets
   };
 
   if (pickupStatus) query.pickupStatus = pickupStatus;
@@ -289,6 +290,24 @@ const getDairyOrderById = asyncHandler(async (req, res) => {
   const responseData = { ...order };
   if (!req.admin && (!req.user || String(order.user) !== String(req.user._id))) {
     delete responseData.pickupOtp;
+  }
+
+  // Ensure street field is present in address
+  if (responseData.address) {
+    responseData.address = {
+      ...responseData.address,
+      street:
+        responseData.address.street ||
+        responseData.address.address_line ||
+        responseData.address.address ||
+        responseData.address.locality ||
+        "",
+      address_line:
+        responseData.address.address_line ||
+        responseData.address.street ||
+        responseData.address.address ||
+        "",
+    };
   }
 
   return res.status(200).json(
