@@ -96,7 +96,7 @@ class DairyOrderService {
     }
 
     // 2. Safe Atomic Inventory Reservation at Outlet
-    await FranchiseInventoryService.reserveStockForOrder(franchiseId, items);
+    await FranchiseInventoryService.reserveStockForOrder(franchise._id, items);
 
     // 3. Sequential orderNumber generation
     const counter = await Counter.findByIdAndUpdate(
@@ -231,6 +231,18 @@ class DairyOrderService {
     order.pickupStatus = "ready_for_pickup";
     order.paidAt = new Date();
     await order.save();
+
+    // Commit reserved inventory at outlet
+    if (order.franchise && order.items && order.items.length > 0) {
+      try {
+        await FranchiseInventoryService.commitReservedStock(
+          order.franchise,
+          order.items
+        );
+      } catch (stockErr) {
+        console.error("Failed to commit reserved stock:", stockErr.message);
+      }
+    }
 
     // Populate franchise for SMS
     const franchise = await Franchise.findById(order.franchise);

@@ -218,32 +218,76 @@ class FranchiseInventoryService {
             variant_sku: variantSku,
           }).lean();
 
-          // If no outlet inventory record exists yet, fallback to product catalog stock
-          if (!current) {
-            const productDoc = await Product.findById(productId);
-            let catalogStock = 0;
-            if (productDoc) {
-              if (variantSku && Array.isArray(productDoc.variants)) {
-                const matchedVariant = productDoc.variants.find((v) => v.sku === variantSku);
-                catalogStock = Number(matchedVariant?.inventory || 0);
-              } else {
-                catalogStock = Number(productDoc.inventory || 0);
-              }
-            }
+          // Check stock in Central Inventory (Inventory model)
+          const Inventory = require("../../models/inventoryModel");
+          let centralInv = await Inventory.findOne({
+            product: productId,
+            ...(variantSku ? { variant_sku: variantSku } : {}),
+          });
+          if (!centralInv && !variantSku) {
+            centralInv = await Inventory.findOne({ product: productId });
+          }
 
-            if (catalogStock >= requestedQty) {
+          // Check stock in Product catalog
+          const productDoc = await Product.findById(productId);
+          let productStock = 0;
+          if (productDoc) {
+            if (variantSku && Array.isArray(productDoc.variants)) {
+              const matchedVariant = productDoc.variants.find(
+                (v) => v.sku === variantSku || String(v._id) === String(variantSku)
+              );
+              productStock = Number(
+                matchedVariant?.available_inventory ??
+                matchedVariant?.inventory ??
+                0
+              );
+            } else {
+              productStock = Number(
+                productDoc.base_available_inventory ??
+                productDoc.available_inventory ??
+                productDoc.qty_on_hand ??
+                productDoc.inventory ??
+                0
+              );
+            }
+          }
+
+          const centralAvailable = centralInv
+            ? Math.max(0, (centralInv.quantity_on_hand || 0) - (centralInv.reserved_quantity || 0))
+            : 0;
+
+          const sourceStock = Math.max(centralAvailable, productStock);
+
+          if (sourceStock >= requestedQty) {
+            if (current) {
+              // Outlet record exists but had 0 or insufficient stock; sync from Central Inventory
+              const newQtyOnHand = Math.max(Number(current.quantity_on_hand || 0), sourceStock);
+              await FranchiseInventory.updateOne(
+                { _id: current._id },
+                {
+                  $set: { quantity_on_hand: newQtyOnHand },
+                  $inc: { reserved_quantity: requestedQty },
+                }
+              );
+              reservedItems.push({
+                productId,
+                variantSku,
+                quantity: requestedQty,
+              });
+              continue;
+            } else {
+              // Outlet record doesn't exist yet; create it from Central Inventory
               try {
                 await FranchiseInventory.create({
                   franchise: franchiseId,
                   product: productId,
                   variant_sku: variantSku,
-                  sku: variantSku || productDoc?.sku || "SKU",
-                  quantity_on_hand: catalogStock,
+                  sku: variantSku || productDoc?.sku || centralInv?.sku || "SKU",
+                  quantity_on_hand: sourceStock,
                   reserved_quantity: requestedQty,
                   low_stock_threshold: 5,
                   last_restocked_at: new Date(),
                 });
-
                 reservedItems.push({
                   productId,
                   variantSku,
@@ -270,7 +314,7 @@ class FranchiseInventoryService {
 
           const available = current
             ? Math.max(0, (current.quantity_on_hand || 0) - (current.reserved_quantity || 0))
-            : 0;
+            : sourceStock;
 
           throw new Error(
             `Insufficient stock for item (ID: ${productId}). Requested: ${requestedQty}, Available: ${available}`
