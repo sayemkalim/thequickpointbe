@@ -11,8 +11,8 @@ router.get("/export", franchiseOrAdmin, OrderController.exportOrders);
 router.get("/", franchiseOrAdmin, OrderController.getAllOrders);
 // router.get("/overview", adminOrSuperAdmin, OrderController.getOrderOverview);
 
-router.post("/", user, OrderController.createOrder);
-router.post("/guest", OrderController.createGuestOrder);
+router.post("/", optionalUser, OrderController.createOrder);
+router.post("/guest", optionalUser, OrderController.createGuestOrder);
 // router.post("/buy-now", user, OrderController.buyNowOrder);
 router.get("/history", user, OrderController.getOrderHistory);
 router.patch("/bulk-status", adminOrSuperAdmin, OrderController.bulkUpdateOrderStatus);

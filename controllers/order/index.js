@@ -25,6 +25,7 @@ const {
 } = require("../../utils/email/templates/orderConfirmation");
 const Admin = require("../../models/adminModel");
 const Inventory = require("../../models/inventoryModel");
+const DairyOrderService = require("../../services/dairyOrder/index");
 const razorpay = require("../../config/razorpay");
 const InventoryService = require("../../services/inventory/index.js");
 const CouponService = require("../../services/coupon/index.js");
@@ -459,6 +460,17 @@ const getAllOrders = asyncHandler(async (req, res) => {
 
     if (status) {
       query.status = status;
+    } else if (req.query.paymentStatus) {
+      query.paymentStatus = req.query.paymentStatus;
+    } else if (req.query.includePending !== "true") {
+      // By default, exclude unpaid/pending checkout attempts from Admin order table
+      query.$and = query.$and || [];
+      query.$and.push({
+        $or: [
+          { paymentStatus: "paid" },
+          { paymentMode: "COD" },
+        ],
+      });
     }
 
     if (req.admin.role === "franchise_owner") {
@@ -500,16 +512,63 @@ const getAllOrders = asyncHandler(async (req, res) => {
 });
 
 const createGuestOrder = asyncHandler(async (req, res) => {
-  return res
-    .status(403)
-    .json(
-      new ApiResponse(
-        403,
-        null,
-        "Guest checkout is disabled. Please authenticate via mobile OTP before placing an order.",
-        false
-      )
-    );
+  const {
+    items,
+    address,
+    customerName,
+    customerPhone,
+    customerEmail,
+    franchiseId,
+    fulfillmentType,
+  } = req.body;
+
+  if (Array.isArray(items) && items.length > 0) {
+    const phone = customerPhone || address?.mobile || req.body.phone;
+    if (!phone) {
+      return res
+        .status(400)
+        .json(new ApiResponse(400, null, "Customer phone number is required", false));
+    }
+
+    try {
+      const result = await DairyOrderService.createDairyOrder({
+        user: null,
+        customerName: customerName || address?.name || "Customer",
+        customerPhone: phone,
+        customerEmail: customerEmail || address?.email || null,
+        franchiseId,
+        items,
+        fulfillmentType: fulfillmentType || (address ? "delivery" : "pickup"),
+        address: address || null,
+        shippingCost: req.body.shippingCost || 0,
+        paymentGateway: "cashfree",
+      });
+
+      return res.status(201).json(
+        new ApiResponse(
+          201,
+          {
+            order: result.order,
+            gatewayDetails: result.gatewayDetails,
+            data: result.order,
+          },
+          "Order initiated successfully",
+          true,
+        ),
+      );
+    } catch (err) {
+      return res.status(400).json(new ApiResponse(400, null, err.message, false));
+    }
+  }
+
+  return res.status(400).json(
+    new ApiResponse(
+      400,
+      null,
+      "Valid items array and phone number are required to place an order.",
+      false,
+    ),
+  );
 });
 
 const sendOrderNotificationEmailsAsync = async (order, user) => {
@@ -763,8 +822,63 @@ const prepareCartOrderData = async ({
 };
 
 const createOrder = asyncHandler(async (req, res) => {
-  const userId = req.user._id;
-  const { cartId, addressId, couponCode, paymentMode, utr_number, selectedItemIds } = req.body;
+  const user = req.user || null;
+  const userId = user?._id || null;
+  const {
+    cartId,
+    addressId,
+    couponCode,
+    paymentMode = "ONLINE",
+    utr_number,
+    selectedItemIds,
+    items,
+    address,
+    customerName,
+    customerPhone,
+    customerEmail,
+    franchiseId,
+    fulfillmentType,
+  } = req.body;
+
+  // Direct checkout support for frontend (localStorage cart)
+  if (Array.isArray(items) && items.length > 0) {
+    const phone = customerPhone || address?.mobile || user?.phone;
+    if (!phone) {
+      return res
+        .status(400)
+        .json(new ApiResponse(400, null, "Customer phone number is required", false));
+    }
+
+    try {
+      const result = await DairyOrderService.createDairyOrder({
+        user,
+        customerName: customerName || address?.name || user?.name || "Customer",
+        customerPhone: phone,
+        customerEmail: customerEmail || address?.email || user?.email || null,
+        franchiseId,
+        items,
+        fulfillmentType: fulfillmentType || (address ? "delivery" : "pickup"),
+        address: address || null,
+        shippingCost: req.body.shippingCost || 0,
+        paymentGateway: "cashfree",
+      });
+
+      return res.status(201).json(
+        new ApiResponse(
+          201,
+          {
+            order: result.order,
+            gatewayDetails: result.gatewayDetails,
+            data: result.order,
+          },
+          "Order initiated successfully",
+          true,
+        ),
+      );
+    } catch (err) {
+      return res.status(400).json(new ApiResponse(400, null, err.message, false));
+    }
+  }
 
   if (!["COD", "UPI", "ONLINE"].includes(paymentMode)) {
     return res
@@ -863,9 +977,9 @@ const createOrder = asyncHandler(async (req, res) => {
   await summary.cart.save();
 
   // Send order confirmation emails
-  const user = await User.findById(userId);
-  if (user) {
-    await sendOrderNotificationEmailsAsync(order, user);
+  const orderUser = user || (userId ? await User.findById(userId) : null);
+  if (orderUser) {
+    await sendOrderNotificationEmailsAsync(order, orderUser);
   }
 
   return res
@@ -875,9 +989,18 @@ const createOrder = asyncHandler(async (req, res) => {
 
 const getOrderHistory = asyncHandler(async (req, res) => {
   const userId = req.user._id;
+  const historyQuery = {
+    user: userId,
+  };
+  if (req.query.includePending !== "true") {
+    historyQuery.$or = [
+      { paymentStatus: "paid" },
+      { paymentMode: "COD" },
+    ];
+  }
   const [orders, total] = await Promise.all([
-    Order.find({ user: userId }).sort({ createdAt: -1 }),
-    Order.countDocuments({ user: userId }),
+    Order.find(historyQuery).sort({ createdAt: -1 }),
+    Order.countDocuments(historyQuery),
   ]);
   return res
     .status(200)

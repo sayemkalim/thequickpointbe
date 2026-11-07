@@ -67,12 +67,12 @@ const checkout = asyncHandler(async (req, res) => {
           fulfillmentDetails: {
             fulfillmentType: result.order.fulfillmentType,
             franchiseId,
-            pickupOtp: result.order.pickupOtp || null,
+            pickupOtp: null, // Released only after payment confirmation
           },
           pickupDetails: {
             fulfillmentType: result.order.fulfillmentType,
             franchiseId,
-            pickupOtp: result.order.pickupOtp || null,
+            pickupOtp: null, // Released only after payment confirmation
           },
         },
         "Order initiated and stock reserved successfully",
@@ -234,12 +234,16 @@ const getFranchiseOrders = asyncHandler(async (req, res) => {
   }
 
   const query = {
-    fulfillmentType: "pickup",
     franchise: franchiseId,
   };
 
   if (pickupStatus) query.pickupStatus = pickupStatus;
-  if (paymentStatus) query.paymentStatus = paymentStatus;
+  if (paymentStatus) {
+    query.paymentStatus = paymentStatus;
+  } else if (req.query.includePending !== "true") {
+    // Only show verified paid orders to franchise store staff
+    query.paymentStatus = "paid";
+  }
 
   const skip = (Math.max(1, page) - 1) * per_page;
 
