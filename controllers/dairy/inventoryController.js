@@ -79,8 +79,69 @@ const getLowStockAlerts = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * Reduce stock / Record manual offline counter sale for an outlet
+ * Allowed: Franchise Owner (scoped to their outlet), Super Admin, Admin
+ */
+const reduceStock = asyncHandler(async (req, res) => {
+  const franchiseId = req.scopedFranchiseId || req.body.franchiseId;
+  const { productId, variantSku, sku, quantity, type = "counter_sale", reason = "" } = req.body;
+
+  if (!franchiseId || !productId || quantity === undefined) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "franchiseId, productId, and quantity are required", false));
+  }
+
+  try {
+    const result = await FranchiseInventoryService.reduceStock({
+      franchiseId,
+      productId,
+      variantSku,
+      sku,
+      quantity,
+      type,
+      reason,
+      adminId: req.admin._id,
+      adminName: req.admin.name || "Staff",
+      adminRole: req.admin.role,
+    });
+
+    const msg =
+      type === "counter_sale"
+        ? "Offline counter sale recorded successfully."
+        : "Outlet stock reduced successfully.";
+
+    return res.status(200).json(new ApiResponse(200, result, msg, true));
+  } catch (error) {
+    return res.status(400).json(new ApiResponse(400, null, error.message, false));
+  }
+});
+
+/**
+ * Get stock adjustment & offline sales logs for an outlet
+ */
+const getInventoryLogs = asyncHandler(async (req, res) => {
+  const franchiseId = req.scopedFranchiseId || req.params.franchiseId;
+  const { page = 1, per_page = 50, productId, type } = req.query;
+
+  const result = await FranchiseInventoryService.getLogs({
+    franchiseId,
+    productId,
+    page: parseInt(page, 10),
+    per_page: parseInt(per_page, 10),
+    type,
+  });
+
+  return res.status(200).json(
+    new ApiResponse(200, result, "Outlet stock logs fetched successfully", true)
+  );
+});
+
 module.exports = {
   getOutletInventory,
   restockItem,
   getLowStockAlerts,
+  reduceStock,
+  getInventoryLogs,
 };

@@ -110,6 +110,31 @@ class DairyOrderService {
     const pickupOtp = this.generatePickupOtp();
     const pickupOtpExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+    // Format delivery address with street and normalized fields
+    let formattedAddress = null;
+    if (fulfillmentType === "delivery" && address) {
+      const streetVal =
+        address.street ||
+        address.address_line ||
+        address.address ||
+        address.locality ||
+        "";
+      formattedAddress = {
+        name: address.name || customerName || user?.name || "Customer",
+        mobile: address.mobile || address.phone || customerPhone || user?.phone || "",
+        street: streetVal,
+        address: address.address || streetVal,
+        address_line: address.address_line || streetVal,
+        locality: address.locality || "",
+        city: address.city || "",
+        state: address.state || "",
+        pincode: address.pincode || address.zip || "",
+        landmark: address.landmark || "",
+        alternatePhone: address.alternatePhone || address.alternate_phone || "",
+        addressType: address.addressType || address.type || "home",
+      };
+    }
+
     // 5. Build order object
     const order = new Order({
       orderNumber,
@@ -123,7 +148,7 @@ class DairyOrderService {
       items: orderItems,
       fulfillmentType: fulfillmentType === "delivery" ? "delivery" : "pickup",
       franchise: franchise._id,
-      address: fulfillmentType === "delivery" ? address : null,
+      address: formattedAddress,
       totalAmount: calculatedTotalAmount,
       discountedTotalAmount: calculatedTotalAmount,
       finalTotalAmount: calculatedTotalAmount + (fulfillmentType === "delivery" ? Number(shippingCost || 0) : 0),
@@ -231,18 +256,6 @@ class DairyOrderService {
     order.pickupStatus = "ready_for_pickup";
     order.paidAt = new Date();
     await order.save();
-
-    // Commit reserved inventory at outlet
-    if (order.franchise && order.items && order.items.length > 0) {
-      try {
-        await FranchiseInventoryService.commitReservedStock(
-          order.franchise,
-          order.items
-        );
-      } catch (stockErr) {
-        console.error("Failed to commit reserved stock:", stockErr.message);
-      }
-    }
 
     // Populate franchise for SMS
     const franchise = await Franchise.findById(order.franchise);

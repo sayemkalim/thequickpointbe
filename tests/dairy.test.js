@@ -508,4 +508,75 @@ describe("Multi-Outlet Dairy Platform Test Suite", () => {
     assert.equal(result.success, true);
     assert.ok(result.messageId);
   });
+
+  // 13. Manual Offline Counter Sale & Stock Reduction
+  test("13. Manual offline counter sale and stock reduction updates inventory and creates audit log", async () => {
+    const patnaFranchise = await Franchise.findOne({ code: "PAT01" });
+    const milk = await Product.findOne({ sku: "DAIRY-MILK-1L" });
+    const admin = await Admin.findOne({ role: "franchise_owner", franchise: patnaFranchise._id });
+
+    const invBefore = await FranchiseInventory.findOne({
+      franchise: patnaFranchise._id,
+      product: milk._id,
+    });
+    const onHandBefore = invBefore.quantity_on_hand;
+    const soldBefore = invBefore.total_sold_quantity;
+
+    // 1. Record manual offline counter sale of 3 packets
+    const saleResult = await FranchiseInventoryService.reduceStock({
+      franchiseId: patnaFranchise._id,
+      productId: milk._id,
+      quantity: 3,
+      type: "counter_sale",
+      reason: "Evening offline walk-in counter cash sale",
+      adminId: admin._id,
+      adminName: admin.name,
+      adminRole: admin.role,
+    });
+
+    assert.ok(saleResult.log._id);
+    assert.equal(saleResult.log.type, "counter_sale");
+    assert.equal(saleResult.log.quantity, 3);
+    assert.equal(saleResult.log.quantity_before, onHandBefore);
+    assert.equal(saleResult.log.quantity_after, onHandBefore - 3);
+
+    const invAfterSale = await FranchiseInventory.findOne({
+      franchise: patnaFranchise._id,
+      product: milk._id,
+    });
+    assert.equal(invAfterSale.quantity_on_hand, onHandBefore - 3);
+    assert.equal(invAfterSale.total_sold_quantity, soldBefore + 3);
+    assert.equal(invAfterSale.manual_sold_quantity, 3);
+
+    // 2. Reduce stock due to damage/spoilage (1 packet)
+    const damageResult = await FranchiseInventoryService.reduceStock({
+      franchiseId: patnaFranchise._id,
+      productId: milk._id,
+      quantity: 1,
+      type: "damage",
+      reason: "Packet punctured during shelf stocking",
+      adminId: admin._id,
+      adminName: admin.name,
+      adminRole: admin.role,
+    });
+
+    assert.equal(damageResult.log.type, "damage");
+    assert.equal(damageResult.log.quantity, 1);
+
+    const invAfterDamage = await FranchiseInventory.findOne({
+      franchise: patnaFranchise._id,
+      product: milk._id,
+    });
+    assert.equal(invAfterDamage.quantity_on_hand, onHandBefore - 4);
+    assert.equal(invAfterDamage.manual_reduced_quantity, 1);
+
+    // 3. Query audit logs
+    const logsResult = await FranchiseInventoryService.getLogs({
+      franchiseId: patnaFranchise._id,
+      productId: milk._id,
+    });
+    assert.equal(logsResult.total >= 2, true);
+    assert.equal(logsResult.logs[0].type, "damage");
+    assert.equal(logsResult.logs[1].type, "counter_sale");
+  });
 });

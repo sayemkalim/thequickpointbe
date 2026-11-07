@@ -218,103 +218,9 @@ class FranchiseInventoryService {
             variant_sku: variantSku,
           }).lean();
 
-          // Check stock in Central Inventory (Inventory model)
-          const Inventory = require("../../models/inventoryModel");
-          let centralInv = await Inventory.findOne({
-            product: productId,
-            ...(variantSku ? { variant_sku: variantSku } : {}),
-          });
-          if (!centralInv && !variantSku) {
-            centralInv = await Inventory.findOne({ product: productId });
-          }
-
-          // Check stock in Product catalog
-          const productDoc = await Product.findById(productId);
-          let productStock = 0;
-          if (productDoc) {
-            if (variantSku && Array.isArray(productDoc.variants)) {
-              const matchedVariant = productDoc.variants.find(
-                (v) => v.sku === variantSku || String(v._id) === String(variantSku)
-              );
-              productStock = Number(
-                matchedVariant?.available_inventory ??
-                matchedVariant?.inventory ??
-                0
-              );
-            } else {
-              productStock = Number(
-                productDoc.base_available_inventory ??
-                productDoc.available_inventory ??
-                productDoc.qty_on_hand ??
-                productDoc.inventory ??
-                0
-              );
-            }
-          }
-
-          const centralAvailable = centralInv
-            ? Math.max(0, (centralInv.quantity_on_hand || 0) - (centralInv.reserved_quantity || 0))
-            : 0;
-
-          const sourceStock = Math.max(centralAvailable, productStock);
-
-          if (sourceStock >= requestedQty) {
-            if (current) {
-              // Outlet record exists but had 0 or insufficient stock; sync from Central Inventory
-              const newQtyOnHand = Math.max(Number(current.quantity_on_hand || 0), sourceStock);
-              await FranchiseInventory.updateOne(
-                { _id: current._id },
-                {
-                  $set: { quantity_on_hand: newQtyOnHand },
-                  $inc: { reserved_quantity: requestedQty },
-                }
-              );
-              reservedItems.push({
-                productId,
-                variantSku,
-                quantity: requestedQty,
-              });
-              continue;
-            } else {
-              // Outlet record doesn't exist yet; create it from Central Inventory
-              try {
-                await FranchiseInventory.create({
-                  franchise: franchiseId,
-                  product: productId,
-                  variant_sku: variantSku,
-                  sku: variantSku || productDoc?.sku || centralInv?.sku || "SKU",
-                  quantity_on_hand: sourceStock,
-                  reserved_quantity: requestedQty,
-                  low_stock_threshold: 5,
-                  last_restocked_at: new Date(),
-                });
-                reservedItems.push({
-                  productId,
-                  variantSku,
-                  quantity: requestedQty,
-                });
-                continue;
-              } catch (createErr) {
-                const retryUpdated = await FranchiseInventory.findOneAndUpdate(
-                  query,
-                  { $inc: { reserved_quantity: requestedQty } },
-                  { new: true }
-                );
-                if (retryUpdated) {
-                  reservedItems.push({
-                    productId,
-                    variantSku,
-                    quantity: requestedQty,
-                  });
-                  continue;
-                }
-              }
-            }
-          }
-
           const available = current
             ? Math.max(0, (current.quantity_on_hand || 0) - (current.reserved_quantity || 0))
-            : sourceStock;
+            : 0;
 
           throw new Error(
             `Insufficient stock for item (ID: ${productId}). Requested: ${requestedQty}, Available: ${available}`
@@ -392,6 +298,148 @@ class FranchiseInventoryService {
         }
       );
     }
+  }
+
+  /**
+   * Manually reduce or record offline counter sales for an outlet inventory item.
+   * Can be performed by Franchise Owner (for their own outlet) or Super Admin / Admin (for any outlet).
+   */
+  async reduceStock({
+    franchiseId,
+    productId,
+    variantSku = null,
+    sku = null,
+    quantity,
+    type = "counter_sale",
+    reason = "",
+    adminId = null,
+    adminName = "",
+    adminRole = "",
+  }) {
+    if (!franchiseId || !productId || quantity === undefined) {
+      throw new Error("franchiseId, productId, and quantity are required.");
+    }
+
+    const qty = Number(quantity);
+    if (isNaN(qty) || qty <= 0) {
+      throw new Error("Quantity to deduct must be a positive number.");
+    }
+
+    const query = {
+      franchise: franchiseId,
+      product: productId,
+    };
+    if (variantSku) {
+      query.variant_sku = variantSku;
+    }
+
+    const inventory = await FranchiseInventory.findOne(query);
+    if (!inventory) {
+      throw new Error("No inventory record found for this product in the selected outlet.");
+    }
+
+    const onHand = Number(inventory.quantity_on_hand || 0);
+    const reserved = Number(inventory.reserved_quantity || 0);
+    const available = Math.max(0, onHand - reserved);
+
+    if (qty > available) {
+      throw new Error(
+        `Cannot deduct ${qty} units. Only ${available} units are available on shelf (${reserved} units reserved for active customer pickup orders).`
+      );
+    }
+
+    const qtyBefore = onHand;
+    const qtyAfter = Math.max(0, qtyBefore - qty);
+
+    const update = {
+      $inc: {
+        quantity_on_hand: -qty,
+      },
+      $set: {
+        updated_by_admin: adminId,
+      },
+    };
+
+    if (type === "counter_sale") {
+      update.$inc.total_sold_quantity = qty;
+      update.$inc.manual_sold_quantity = qty;
+    } else {
+      update.$inc.manual_reduced_quantity = qty;
+    }
+
+    const updatedInventory = await FranchiseInventory.findByIdAndUpdate(
+      inventory._id,
+      update,
+      { new: true }
+    );
+
+    // Create Audit Log Entry
+    const OutletStockLog = require("../../models/outletStockLogModel");
+    const log = await OutletStockLog.create({
+      franchise: franchiseId,
+      product: productId,
+      variant_sku: variantSku || inventory.variant_sku || null,
+      sku: sku || inventory.sku || "",
+      quantity: qty,
+      type,
+      quantity_before: qtyBefore,
+      quantity_after: qtyAfter,
+      reason: reason || (type === "counter_sale" ? "Manual counter / offline sale" : "Manual stock reduction"),
+      recorded_by: adminId,
+      recorded_by_name: adminName,
+      recorded_by_role: adminRole,
+    });
+
+    return {
+      inventory: updatedInventory,
+      log,
+    };
+  }
+
+  /**
+   * Get paginated deduction & offline sales logs for an outlet
+   */
+  async getLogs({
+    franchiseId,
+    productId = null,
+    page = 1,
+    per_page = 50,
+    type = null,
+  }) {
+    const OutletStockLog = require("../../models/outletStockLogModel");
+    const query = {};
+
+    if (franchiseId && franchiseId !== "all") {
+      query.franchise = franchiseId;
+    }
+    if (productId) {
+      query.product = productId;
+    }
+    if (type && type !== "all") {
+      query.type = type;
+    }
+
+    const skip = (Math.max(1, Number(page)) - 1) * Number(per_page);
+
+    const [logs, total] = await Promise.all([
+      OutletStockLog.find(query)
+        .populate("franchise", "name outletCode address city phone")
+        .populate("product", "name sku banner_image unit dairyCategory price discounted_price")
+        .populate("recorded_by", "name email role")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(per_page))
+        .lean(),
+      OutletStockLog.countDocuments(query),
+    ]);
+
+    return {
+      logs,
+      total,
+      page: Number(page),
+      per_page: Number(per_page),
+      total_pages: Math.ceil(total / Number(per_page)),
+    };
   }
 }
 

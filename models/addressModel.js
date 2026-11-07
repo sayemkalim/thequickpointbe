@@ -32,6 +32,11 @@ const AddressSchema = new mongoose.Schema(
       required: true,
       maxlength: 500,
     },
+    street: {
+      type: String,
+      default: "",
+      maxlength: 500,
+    },
     city: {
       type: String,
       required: true,
@@ -41,6 +46,11 @@ const AddressSchema = new mongoose.Schema(
       type: String,
       required: true,
       maxlength: 100,
+    },
+    landmark: {
+      type: String,
+      default: "",
+      maxlength: 255,
     },
     // landmark: {
     //   type: String,
