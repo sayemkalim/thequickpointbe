@@ -150,7 +150,10 @@ class DairyOrderService {
           customerPhone,
           customerEmail,
         });
-        order.cashfreeOrderId = gatewayOrderDetails.cf_order_id;
+        if (gatewayOrderDetails) {
+          gatewayOrderDetails.provider = "cashfree";
+          order.cashfreeOrderId = gatewayOrderDetails.cf_order_id;
+        }
       }
     }
 
