@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const OrderController = require("../../controllers/order/index.js");
+const DairyOrderController = require("../../controllers/dairy/orderController.js");
 const { user, optionalUser } = require("../../middleware/auth/userMiddleware.js");
 const {
   adminOrSuperAdmin,
@@ -33,6 +34,11 @@ router.get("/payment/:id/bill", franchiseOrAdmin, OrderController.getOrderBill);
 router.get("/user/:id", user, OrderController.getOrderByIdFormUser);
 // router.get("/generate-order-bill/:id", user, OrderController.generateOrderBill);
 router.post("/generate-payment-link", adminOrSuperAdmin, OrderController.generatePaymentLinks);
+
+// Cashfree / Standard Payment verification routes
+router.post("/verify-payment", optionalUser, DairyOrderController.verifyPayment);
+router.post("/confirm-payment", optionalUser, DairyOrderController.verifyPayment);
+router.post("/cashfree/verify-payment", optionalUser, DairyOrderController.verifyPayment);
 
 // Razorpay Standard Checkout (Popup) routes
 router.get("/razorpay/config", OrderController.getRazorpayConfig);

@@ -151,14 +151,17 @@ class DairyOrderService {
       if (isCfEnabled) {
         gatewayOrderDetails = await CashfreeProvider.createPaymentSession({
           orderId: order._id,
-          orderAmount: calculatedTotalAmount,
-          customerId: user?._id || `CUST_${customerPhone}`,
+          orderAmount: order.finalTotalAmount || calculatedTotalAmount,
+          customerId: user?._id ? String(user._id) : `CUST_${customerPhone}`,
           customerPhone,
           customerEmail,
         });
         if (gatewayOrderDetails) {
           gatewayOrderDetails.provider = "cashfree";
-          order.cashfreeOrderId = gatewayOrderDetails.cf_order_id;
+          order.cashfreeOrderId =
+            gatewayOrderDetails.cf_order_id ||
+            gatewayOrderDetails.order_id ||
+            gatewayOrderDetails.cfOrderId;
         }
       }
     }
@@ -170,21 +173,21 @@ class DairyOrderService {
         gatewayOrderDetails = {
           provider: "razorpay",
           razorpayOrderId: order.razorpayOrderId,
-          amount: Math.round(calculatedTotalAmount * 100),
+          amount: Math.round((order.finalTotalAmount || calculatedTotalAmount) * 100),
           currency: "INR",
           keyId: "rzp_test_key",
         };
       } else {
         try {
           const razorpayOrder = await razorpay.orders.create({
-            amount: Math.round(calculatedTotalAmount * 100), // in paise
+            amount: Math.round((order.finalTotalAmount || calculatedTotalAmount) * 100), // in paise
             currency: "INR",
             receipt: `dairy_rcpt_${orderNumber}`,
             notes: {
               orderId: String(order._id),
               orderNumber: String(orderNumber),
               franchiseId: String(franchise._id),
-              fulfillmentType: "pickup",
+              fulfillmentType: fulfillmentType || "pickup",
             },
           });
           order.razorpayOrderId = razorpayOrder.id;
@@ -197,7 +200,7 @@ class DairyOrderService {
           };
         } catch (rzpErr) {
           // Rollback stock reservation on gateway initiation failure
-          await FranchiseInventoryService.releaseReservedStock(franchiseId, items);
+          await FranchiseInventoryService.releaseReservedStock(franchise._id, items);
           throw new Error(
             `Payment gateway order creation failed: ${rzpErr.error?.description || rzpErr.message}`
           );
