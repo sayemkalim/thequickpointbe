@@ -322,6 +322,9 @@ const exportOrders = asyncHandler(async (req, res) => {
     }
 
     // Fetch orders with user, address, and items populated
+    if (req.admin?.role === "franchise_owner") {
+      dateFilter.franchise = req.admin.franchise;
+    }
     const orders = await Order.find(dateFilter)
       .populate("user")
       .populate("address")
@@ -457,8 +460,20 @@ const getAllOrders = asyncHandler(async (req, res) => {
       query.status = status;
     }
 
+    if (req.admin.role === "franchise_owner") {
+      if (!req.admin.franchise) {
+        return res.status(403).json(new ApiResponse(403, null, "No franchise outlet assigned to this franchise owner account", false));
+      }
+      query.franchise = req.admin.franchise;
+    } else if (req.query.franchiseId && req.query.franchiseId !== "all") {
+      if (mongoose.Types.ObjectId.isValid(req.query.franchiseId)) {
+        query.franchise = new mongoose.Types.ObjectId(req.query.franchiseId);
+      }
+    }
+
     const [orders, total] = await Promise.all([
       Order.find(query)
+        .populate("franchise", "name outletCode address city phone")
         .sort({ createdAt: -1 })
         .skip((page - 1) * per_page)
         .limit(parseInt(per_page, 10)),
@@ -924,9 +939,12 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
 
   const order = await Order.findById(id);
   if (!order) {
-    return res
-      .status(404)
-      .json(new ApiResponse(404, null, "Order not found", false));
+    return res.status(404).json(new ApiResponse(404, null, "Order not found", false));
+  }
+  if (req.admin.role === "franchise_owner") {
+    if (order.franchise && String(order.franchise) !== String(req.admin.franchise)) {
+      return res.status(403).json(new ApiResponse(403, null, "Access denied: This order belongs to another outlet.", false));
+    }
   }
 
   const previousStatus = order.status;
@@ -1331,11 +1349,14 @@ const getOrderById = asyncHandler(async (req, res) => {
       .status(400)
       .json(new ApiResponse(400, null, "Invalid order ID", false));
   }
-  const order = await Order.findById(id).populate("coupon");
+  const order = await Order.findById(id).populate("coupon").populate("franchise", "name outletCode address city phone");
   if (!order) {
-    return res
-      .status(404)
-      .json(new ApiResponse(404, null, "Order not found", false));
+    return res.status(404).json(new ApiResponse(404, null, "Order not found", false));
+  }
+  if (req.admin.role === "franchise_owner") {
+    if (order.franchise && String(order.franchise._id || order.franchise) !== String(req.admin.franchise)) {
+      return res.status(403).json(new ApiResponse(403, null, "Access denied: This order belongs to another outlet.", false));
+    }
   }
   return res
     .status(200)

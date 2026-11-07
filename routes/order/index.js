@@ -4,10 +4,11 @@ const OrderController = require("../../controllers/order/index.js");
 const { user, optionalUser } = require("../../middleware/auth/userMiddleware.js");
 const {
   adminOrSuperAdmin,
+  franchiseOrAdmin,
 } = require("../../middleware/auth/adminMiddleware.js");
 
-router.get("/export", adminOrSuperAdmin, OrderController.exportOrders);
-router.get("/", adminOrSuperAdmin, OrderController.getAllOrders);
+router.get("/export", franchiseOrAdmin, OrderController.exportOrders);
+router.get("/", franchiseOrAdmin, OrderController.getAllOrders);
 // router.get("/overview", adminOrSuperAdmin, OrderController.getOrderOverview);
 
 router.post("/", user, OrderController.createOrder);
@@ -20,15 +21,15 @@ router.get("/by-product/:productId", adminOrSuperAdmin, OrderController.getOrder
 router.get("/:id/email-status", adminOrSuperAdmin, OrderController.getOrderEmailStatus);
 router.patch("/:id", adminOrSuperAdmin, OrderController.updateOrder);
 router.patch("/:id/shipping-package", adminOrSuperAdmin, OrderController.updateShippingPackage);
-router.patch("/:id/status", adminOrSuperAdmin, OrderController.updateOrderStatus);
+router.patch("/:id/status", franchiseOrAdmin, OrderController.updateOrderStatus);
 router.patch("/edit/:id", user, OrderController.editOrder);
 router.patch("/payment/:id/cancel", user, OrderController.cancelOrder);
 router.patch("/:id/cancel", user, OrderController.cancelOrder);
 router.patch("/payment/:id/return", user, OrderController.returnOrder);
 router.patch("/:id/return", user, OrderController.returnOrder);
 router.post("/:id/return", user, OrderController.returnOrder);
-router.get("/:id", adminOrSuperAdmin, OrderController.getOrderById);
-router.get("/payment/:id/bill", adminOrSuperAdmin, OrderController.getOrderBill);
+router.get("/:id", franchiseOrAdmin, OrderController.getOrderById);
+router.get("/payment/:id/bill", franchiseOrAdmin, OrderController.getOrderBill);
 router.get("/user/:id", user, OrderController.getOrderByIdFormUser);
 // router.get("/generate-order-bill/:id", user, OrderController.generateOrderBill);
 router.post("/generate-payment-link", adminOrSuperAdmin, OrderController.generatePaymentLinks);
