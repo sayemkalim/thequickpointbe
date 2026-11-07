@@ -23,6 +23,16 @@ const FranchiseInventorySchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    total_restocked_quantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    total_sold_quantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     quantity_on_hand: {
       type: Number,
       default: 0,

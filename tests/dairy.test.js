@@ -8,6 +8,7 @@ const jwt = require("jsonwebtoken");
 // Models
 const Franchise = require("../models/franchiseModel");
 const FranchiseInventory = require("../models/franchiseInventoryModel");
+const Inventory = require("../models/inventoryModel");
 const Product = require("../models/productsModel");
 const Order = require("../models/orderModel");
 const StoreSettings = require("../models/storeSettingsModel");
@@ -123,6 +124,15 @@ describe("Multi-Outlet Dairy Platform Test Suite", () => {
       created_by_admin: new mongoose.Types.ObjectId(),
     });
 
+    // Seed central warehouse inventory first
+    await Inventory.create({
+      product: milkProduct._id,
+      sku: milkProduct.sku,
+      quantity_on_hand: 50,
+      reserved_quantity: 0,
+      threshold_value: 5,
+    });
+
     // Restock 10 packets at Patna outlet
     await FranchiseInventoryService.restock({
       franchiseId: patnaFranchise._id,
@@ -139,6 +149,7 @@ describe("Multi-Outlet Dairy Platform Test Suite", () => {
     assert.equal(inv.quantity_on_hand, 10);
     assert.equal(inv.reserved_quantity, 0);
     assert.equal(inv.available_quantity, 10);
+    assert.equal(inv.total_restocked_quantity, 10);
 
     // Reserve 4 packets for order checkout
     const reservation = await FranchiseInventoryService.reserveStockForOrder(
@@ -313,6 +324,14 @@ describe("Multi-Outlet Dairy Platform Test Suite", () => {
     assert.ok(ledger, "CommissionLedger record must be created on pickup");
     assert.equal(ledger.franchise.toString(), patnaFranchise._id.toString());
     assert.equal(ledger.status, "accrued");
+
+    // Verify outlet inventory updated: total_sold_quantity incremented, quantity_on_hand decremented
+    const invAfterPickup = await FranchiseInventory.findOne({
+      franchise: patnaFranchise._id,
+    });
+    assert.equal(invAfterPickup.total_sold_quantity, 2, "total_sold_quantity should be 2 after customer pickup");
+    assert.equal(invAfterPickup.quantity_on_hand, 8, "quantity_on_hand should be 8");
+    assert.equal(invAfterPickup.reserved_quantity, 0, "reserved_quantity should be 0");
 
     // Attempt duplicate pickup verification -> must be rejected idempotently
     const duplicateVerify = await DairyOrderService.verifyPickupOtp({
