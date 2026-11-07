@@ -441,6 +441,14 @@ const createProduct = asyncHandler(async (req, res) => {
     created_by_admin: req.admin?._id || restBody.created_by_admin,
   };
 
+  if (req.body.weight !== undefined) {
+    productData.weight = req.body.weight ? String(req.body.weight).trim() : null;
+    const numWeight = parseFloat(req.body.weight);
+    if (!isNaN(numWeight) && numWeight >= 0) {
+      productData.weight_in_grams = numWeight;
+    }
+  }
+
   if (productData.inventory === undefined) productData.inventory = 0;
 
   const product = await ProductsServices.createProduct(productData);
@@ -675,6 +683,16 @@ const updateProduct = asyncHandler(async (req, res) => {
     is_best_seller: isBestSeller,
     is_new_arrival: isNewArrival,
   };
+
+  if (req.body.weight !== undefined) {
+    productData.weight = req.body.weight ? String(req.body.weight).trim() : null;
+    const numWeight = parseFloat(req.body.weight);
+    if (!isNaN(numWeight) && numWeight >= 0) {
+      productData.weight_in_grams = numWeight;
+    } else if (!req.body.weight) {
+      productData.weight_in_grams = null;
+    }
+  }
 
   if (productData.inventory === undefined)
     productData.inventory = product.inventory || 0;

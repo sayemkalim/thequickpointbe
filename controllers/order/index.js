@@ -8,6 +8,7 @@ const Product = require("../../models/productsModel");
 const Order = require("../../models/orderModel");
 const Category = require("../../models/categoryModel");
 const User = require("../../models/userModel");
+const Franchise = require("../../models/franchiseModel");
 // Dummy shipping helpers (QuickPoint is 100% pickup)
 const calculateShippingCost = async () => ({ shippingCost: 0, shippingDetails: null });
 const calculateShippingByZone = async () => ({ shippingCost: 0, shippingDetails: null });

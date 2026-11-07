@@ -73,6 +73,11 @@ const ProductSchema = new mongoose.Schema(
       enum: ["published", "draft", "Out Of Stock"],
       default: "draft",
     },
+    weight: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     weight_in_grams: {
       type: Number,
       min: 0,
@@ -176,6 +181,7 @@ const ProductSchema = new mongoose.Schema(
         is_out_of_stock: { type: Boolean, default: false },
         status: { type: String, default: "published" },
         images: [String],
+        weight: { type: String, default: null, trim: true },
         weight_in_grams: { type: Number, min: 0, default: null },
         expiry_date: { type: Date, default: null },
         price_tiers: [
