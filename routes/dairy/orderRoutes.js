@@ -17,8 +17,9 @@ const {
 // Customer Checkout (pickup only, address not required)
 router.post("/checkout", optionalUser, checkout);
 
-// Payment Verification
+// Payment Verification (supports both /verify-payment and /confirm-payment)
 router.post("/verify-payment", verifyPayment);
+router.post("/confirm-payment", verifyPayment);
 
 // Outlet Staff Pickup Verification (requires staff auth with outlet check)
 router.post("/pickup/verify", franchiseOrAdmin, verifyPickupOtp);

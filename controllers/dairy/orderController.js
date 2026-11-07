@@ -24,17 +24,23 @@ const checkout = asyncHandler(async (req, res) => {
     shippingCost = 0,
   } = req.body;
 
-  if (!franchiseId || !items || !Array.isArray(items) || items.length === 0) {
+  if (!items || !Array.isArray(items) || items.length === 0) {
     return res
       .status(400)
-      .json(new ApiResponse(400, null, "franchiseId and valid items array are required", false));
+      .json(new ApiResponse(400, null, "Valid items array is required", false));
+  }
+
+  if (fulfillmentType === "pickup" && !franchiseId) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "franchiseId is required for store pickup orders", false));
   }
 
   const userPhone = customerPhone || req.user?.phone;
   if (!userPhone) {
     return res
       .status(400)
-      .json(new ApiResponse(400, null, "Customer phone number is required for pickup OTP", false));
+      .json(new ApiResponse(400, null, "Customer phone number is required", false));
   }
 
   try {

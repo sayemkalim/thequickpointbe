@@ -33,9 +33,6 @@ class DairyOrderService {
     address = null,
     shippingCost = 0,
   }) {
-    if (!franchiseId) {
-      throw new Error("Franchise outlet selection is required for dairy orders.");
-    }
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new Error("Order items are required.");
     }
@@ -43,9 +40,15 @@ class DairyOrderService {
       throw new Error("Customer phone number is required.");
     }
 
-    const franchise = await Franchise.findById(franchiseId);
-    if (!franchise || franchise.status !== "active") {
-      throw new Error("Selected franchise outlet is unavailable or inactive.");
+    let franchise = null;
+    if (franchiseId) {
+      franchise = await Franchise.findById(franchiseId);
+    }
+    if (!franchise) {
+      franchise = await Franchise.findOne({ status: "active" });
+    }
+    if (!franchise) {
+      throw new Error("No active outlet available to fulfill order.");
     }
 
     // 1. Resolve and validate items
