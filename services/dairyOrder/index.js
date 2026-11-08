@@ -435,6 +435,8 @@ class DairyOrderService {
    */
   async commitOrderStock(order) {
     if (!order || !Array.isArray(order.items) || order.items.length === 0) return;
+    // For pickup orders, stock remains reserved until customer verifies OTP at outlet
+    if (order.fulfillmentType === "pickup") return;
     for (const item of order.items) {
       const productId = item.product?._id || item.product;
       const variantSku = item.variant_sku || null;
