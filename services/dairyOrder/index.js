@@ -97,8 +97,184 @@ class DairyOrderService {
       });
     }
 
-    // 2. Safe Atomic Inventory Reservation at Outlet
-    await FranchiseInventoryService.reserveStockForOrder(franchise._id, items);
+    // 2. Safe Atomic Inventory Reservation
+    // Rule A: Takeaway (pickup): MUST be available in the chosen outlet's inventory. If not available at outlet -> BLOCK TAKEAWAY!
+    // Rule B: Home Delivery: If available at outlet -> fulfill from outlet. If NOT available at outlet -> fulfill from Central Inventory!
+    const isPickup = fulfillmentType === "pickup";
+    const reservedLogs = [];
+    let hasOutletReservation = false;
+    let hasCentralReservation = false;
+
+    try {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const productId = item.productId || item.product?._id || item.product;
+        const variantSku = item.variant_sku || null;
+        const qty = Number(item.quantity || 1);
+        const resolvedProduct = await Product.findById(productId).lean();
+        const productName = resolvedProduct?.name || "Item";
+
+        // Check availability at outlet
+        let outletInv = null;
+        if (franchise?._id) {
+          outletInv = await FranchiseInventory.findOne({
+            franchise: franchise._id,
+            product: productId,
+            variant_sku: variantSku,
+          });
+        }
+
+        const outletAvailable = outletInv
+          ? Math.max(0, (outletInv.quantity_on_hand || 0) - (outletInv.reserved_quantity || 0))
+          : 0;
+
+        if (isPickup) {
+          // --- TAKEAWAY / PICKUP FLOW ---
+          if (outletAvailable >= qty) {
+            const updated = await FranchiseInventory.findOneAndUpdate(
+              {
+                _id: outletInv._id,
+                $expr: {
+                  $gte: [
+                    { $subtract: ["$quantity_on_hand", "$reserved_quantity"] },
+                    qty,
+                  ],
+                },
+              },
+              { $inc: { reserved_quantity: qty } },
+              { new: true }
+            );
+
+            if (!updated) {
+              throw new Error(
+                `Product "${productName}" is no longer available in the requested quantity for takeaway at this outlet.`
+              );
+            }
+
+            orderItems[i].inventorySource = "outlet";
+            hasOutletReservation = true;
+            reservedLogs.push({
+              source: "outlet",
+              inventoryId: outletInv._id,
+              franchiseId: franchise._id,
+              productId,
+              variantSku,
+              quantity: qty,
+            });
+          } else {
+            // Takeaway is NOT allowed if product is not available at outlet!
+            throw new Error(
+              `"${productName}" is out of stock at this outlet for takeaway. Please choose Home Delivery or select another outlet.`
+            );
+          }
+        } else {
+          // --- HOME DELIVERY FLOW ---
+          if (outletAvailable >= qty) {
+            // Outlet has stock -> fulfill from outlet!
+            const updated = await FranchiseInventory.findOneAndUpdate(
+              {
+                _id: outletInv._id,
+                $expr: {
+                  $gte: [
+                    { $subtract: ["$quantity_on_hand", "$reserved_quantity"] },
+                    qty,
+                  ],
+                },
+              },
+              { $inc: { reserved_quantity: qty } },
+              { new: true }
+            );
+
+            if (updated) {
+              orderItems[i].inventorySource = "outlet";
+              hasOutletReservation = true;
+              reservedLogs.push({
+                source: "outlet",
+                inventoryId: outletInv._id,
+                franchiseId: franchise._id,
+                productId,
+                variantSku,
+                quantity: qty,
+              });
+              continue;
+            }
+          }
+
+          // Outlet does not have enough stock -> fulfill from Central Inventory!
+          let centralInv = await Inventory.findOne({
+            product: productId,
+            variant_sku: variantSku,
+          });
+
+          if (!centralInv && !variantSku) {
+            centralInv = await Inventory.findOne({ product: productId });
+          }
+
+          const centralAvailable = centralInv
+            ? Math.max(0, (centralInv.quantity_on_hand || 0) - (centralInv.reserved_quantity || 0))
+            : 0;
+
+          if (centralAvailable >= qty) {
+            const centralUpdated = await Inventory.findOneAndUpdate(
+              {
+                _id: centralInv._id,
+                $expr: {
+                  $gte: [
+                    { $subtract: ["$quantity_on_hand", "$reserved_quantity"] },
+                    qty,
+                  ],
+                },
+              },
+              { $inc: { reserved_quantity: qty } },
+              { new: true }
+            );
+
+            if (!centralUpdated) {
+              throw new Error(
+                `Insufficient stock for "${productName}" in Central Inventory.`
+              );
+            }
+
+            orderItems[i].inventorySource = "central";
+            hasCentralReservation = true;
+            reservedLogs.push({
+              source: "central",
+              inventoryId: centralInv._id,
+              productId,
+              variantSku,
+              quantity: qty,
+            });
+          } else {
+            throw new Error(
+              `Insufficient stock for item "${productName}". Requested: ${qty}, Available: ${Math.max(outletAvailable, centralAvailable)}`
+            );
+          }
+        }
+      }
+    } catch (resErr) {
+      // Rollback any successfully reserved items
+      for (const log of reservedLogs) {
+        if (log.source === "outlet") {
+          await FranchiseInventory.updateOne(
+            { _id: log.inventoryId },
+            { $inc: { reserved_quantity: -log.quantity } }
+          );
+        } else if (log.source === "central") {
+          await Inventory.updateOne(
+            { _id: log.inventoryId },
+            { $inc: { reserved_quantity: -log.quantity } }
+          );
+        }
+      }
+      throw resErr;
+    }
+
+    const orderInventorySource =
+      hasOutletReservation && hasCentralReservation
+        ? "mixed"
+        : hasCentralReservation
+        ? "central"
+        : "outlet";
 
     // 3. Sequential orderNumber generation
     const counter = await Counter.findByIdAndUpdate(
@@ -149,6 +325,7 @@ class DairyOrderService {
       },
       items: orderItems,
       fulfillmentType: fulfillmentType === "delivery" ? "delivery" : "pickup",
+      inventorySource: orderInventorySource,
       franchise: franchise._id,
       address: formattedAddress,
       totalAmount: calculatedTotalAmount,
@@ -227,7 +404,7 @@ class DairyOrderService {
           };
         } catch (rzpErr) {
           // Rollback stock reservation on gateway initiation failure
-          await FranchiseInventoryService.releaseReservedStock(franchise._id, items);
+          await this.releaseOrderStock(order);
           throw new Error(
             `Payment gateway order creation failed: ${rzpErr.error?.description || rzpErr.message}`
           );
@@ -241,6 +418,65 @@ class DairyOrderService {
       order,
       gatewayDetails: gatewayOrderDetails,
     };
+  }
+
+  /**
+   * Commit reserved stock on successful payment confirmation
+   */
+  async commitOrderStock(order) {
+    if (!order || !Array.isArray(order.items) || order.items.length === 0) return;
+    for (const item of order.items) {
+      const productId = item.product?._id || item.product;
+      const variantSku = item.variant_sku || null;
+      const qty = Number(item.quantity || 1);
+
+      if (item.inventorySource === "central") {
+        await Inventory.updateOne(
+          { product: productId, variant_sku: variantSku },
+          {
+            $inc: {
+              quantity_on_hand: -qty,
+              reserved_quantity: -qty,
+            },
+          }
+        );
+      } else if (order.franchise) {
+        await FranchiseInventory.updateOne(
+          { franchise: order.franchise, product: productId, variant_sku: variantSku },
+          {
+            $inc: {
+              quantity_on_hand: -qty,
+              reserved_quantity: -qty,
+              total_sold_quantity: qty,
+            },
+          }
+        );
+      }
+    }
+  }
+
+  /**
+   * Release reserved stock back to available pool on cancellation / gateway failure
+   */
+  async releaseOrderStock(order) {
+    if (!order || !Array.isArray(order.items) || order.items.length === 0) return;
+    for (const item of order.items) {
+      const productId = item.product?._id || item.product;
+      const variantSku = item.variant_sku || null;
+      const qty = Number(item.quantity || 1);
+
+      if (item.inventorySource === "central") {
+        await Inventory.updateOne(
+          { product: productId, variant_sku: variantSku },
+          { $inc: { reserved_quantity: -qty } }
+        );
+      } else if (order.franchise) {
+        await FranchiseInventory.updateOne(
+          { franchise: order.franchise, product: productId, variant_sku: variantSku },
+          { $inc: { reserved_quantity: -qty } }
+        );
+      }
+    }
   }
 
   /**
@@ -258,6 +494,13 @@ class DairyOrderService {
     order.pickupStatus = "ready_for_pickup";
     order.paidAt = new Date();
     await order.save();
+
+    // Commit reserved inventory atomically (outlet or central based on item reservation)
+    try {
+      await this.commitOrderStock(order);
+    } catch (stockErr) {
+      console.error("Failed to commit order stock:", stockErr.message);
+    }
 
     // Populate franchise for SMS
     const franchise = await Franchise.findById(order.franchise);
@@ -296,12 +539,11 @@ class DairyOrderService {
       return order; // Already cancelled
     }
 
-    // Release reserved inventory
-    if (order.franchise && order.items && order.items.length > 0) {
-      await FranchiseInventoryService.releaseReservedStock(
-        order.franchise,
-        order.items
-      );
+    // Release reserved inventory atomically (outlet or central based on item reservation)
+    try {
+      await this.releaseOrderStock(order);
+    } catch (stockErr) {
+      console.error("Failed to release order stock on cancellation:", stockErr.message);
     }
 
     order.status = "cancelled";
