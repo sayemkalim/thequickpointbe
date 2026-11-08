@@ -351,17 +351,9 @@ class FranchiseService {
         ? Math.max(0, (inv.quantity_on_hand || 0) - (inv.reserved_quantity || 0))
         : 0;
 
-      // If no outlet inventory record exists yet, fallback to product catalog stock
+      // If no outlet inventory record exists, availableQty is strictly 0 (out of stock at this outlet)
       if (!inv) {
-        const productDoc = await Product.findById(productId).lean();
-        if (productDoc) {
-          if (variantSku && Array.isArray(productDoc.variants)) {
-            const matchedVariant = productDoc.variants.find((v) => v.sku === variantSku);
-            availableQty = Number(matchedVariant?.inventory || 0);
-          } else {
-            availableQty = Number(productDoc.inventory || 0);
-          }
-        }
+        availableQty = 0;
       }
 
       if (availableQty < requestedQty) {

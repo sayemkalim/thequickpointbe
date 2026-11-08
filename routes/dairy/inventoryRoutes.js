@@ -16,7 +16,8 @@ const {
 // Read-only endpoints: Franchise Owner (scoped to their outlet) or Central Admin
 router.get("/:franchiseId/low-stock", franchiseOrAdmin, scopeToFranchise, getLowStockAlerts);
 router.get("/:franchiseId/logs", franchiseOrAdmin, scopeToFranchise, getInventoryLogs);
-router.get("/:franchiseId", franchiseOrAdmin, scopeToFranchise, getOutletInventory);
+// Public read-only outlet inventory lookup for storefront, PDP, and PLP stock availability
+router.get("/:franchiseId", getOutletInventory);
 
 // Mutation endpoints:
 // Restocking strictly restricted to Super Admin & Admin ONLY (central warehouse transfer)

@@ -75,6 +75,8 @@ const getAllProducts = asyncHandler(async (req, res) => {
     search,
     brands,
     sort_by = "created_at",
+    outletId,
+    franchiseId,
   } = req.query;
 
   // Handle comma-separated values for array parameters
@@ -123,6 +125,20 @@ const getAllProducts = asyncHandler(async (req, res) => {
   // Convert Decimal128 to numbers for all products and attach available_inventory
   if (products.data && Array.isArray(products.data)) {
     const productIds = products.data.map((p) => p._id);
+    const targetOutletId = outletId || franchiseId;
+    let franchiseInventoryRecords = [];
+    if (targetOutletId) {
+      try {
+        const FranchiseInventory = require("../../models/franchiseInventoryModel");
+        franchiseInventoryRecords = await FranchiseInventory.find({
+          franchise: targetOutletId,
+          product: { $in: productIds },
+        }).lean();
+      } catch (err) {
+        console.warn("Franchise inventory query error:", err.message);
+      }
+    }
+
     const inventoryRecords = await Inventory.find({
       product: { $in: productIds },
     }).lean();
@@ -146,6 +162,18 @@ const getAllProducts = asyncHandler(async (req, res) => {
         : (product.base_available_inventory !== undefined
             ? product.base_available_inventory
             : (product.inventory || 0));
+
+      let prodOutletStock = 0;
+      let hasOutletRecord = false;
+      if (targetOutletId) {
+        const fInv = franchiseInventoryRecords.find(
+          (fi) => fi.product && fi.product.toString() === prodIdStr && !fi.variant_sku
+        );
+        if (fInv) {
+          prodOutletStock = Math.max(0, (fInv.quantity_on_hand || 0) - (fInv.reserved_quantity || 0));
+          hasOutletRecord = true;
+        }
+      }
 
       const convertedProduct = {
         ...product,
@@ -186,9 +214,20 @@ const getAllProducts = asyncHandler(async (req, res) => {
               : (variant.available_inventory !== undefined ? variant.available_inventory : (variant.inventory || 0));
             totalVariantStock += variantAvailable;
 
+            let variantOutletStock = 0;
+            if (targetOutletId) {
+              const fvInv = franchiseInventoryRecords.find(
+                (fi) => fi.product && fi.product.toString() === prodIdStr && fi.variant_sku === variant.sku
+              );
+              if (fvInv) {
+                variantOutletStock = Math.max(0, (fvInv.quantity_on_hand || 0) - (fvInv.reserved_quantity || 0));
+              }
+            }
+
             return {
               ...variant,
               available_inventory: variantAvailable,
+              outletStock: variantOutletStock,
             price:
               variant.price &&
               typeof variant.price === "object" &&
@@ -229,6 +268,11 @@ const getAllProducts = asyncHandler(async (req, res) => {
       convertedProduct.available_inventory = hasVariants
         ? (baseAvailable + totalVariantStock)
         : baseAvailable;
+      if (targetOutletId) {
+        convertedProduct.outletStock = prodOutletStock;
+        convertedProduct.hasOutletInventoryRecord = hasOutletRecord;
+        convertedProduct.targetOutletId = targetOutletId;
+      }
 
       return convertedProduct;
     });
@@ -271,6 +315,20 @@ const getProductById = asyncHandler(async (req, res) => {
     }
   });
 
+  const targetOutletId = req.query.outletId || req.query.franchiseId;
+  let franchiseInventoryRecords = [];
+  if (targetOutletId) {
+    try {
+      const FranchiseInventory = require("../../models/franchiseInventoryModel");
+      franchiseInventoryRecords = await FranchiseInventory.find({
+        franchise: targetOutletId,
+        product: id,
+      }).lean();
+    } catch (err) {
+      console.warn("Franchise inventory query error in getProductById:", err.message);
+    }
+  }
+
   const productObj = product.toJSON();
   const hasVariants = Array.isArray(productObj.variants) && productObj.variants.length > 0;
   if (hasVariants) {
@@ -278,9 +336,17 @@ const getProductById = asyncHandler(async (req, res) => {
       const vAvail = variantStockMap.has(v.sku)
         ? variantStockMap.get(v.sku)
         : (v.available_inventory !== undefined ? v.available_inventory : (v.inventory || 0));
+      let variantOutletStock = 0;
+      if (targetOutletId) {
+        const fvInv = franchiseInventoryRecords.find((fi) => fi.variant_sku === v.sku);
+        if (fvInv) {
+          variantOutletStock = Math.max(0, (fvInv.quantity_on_hand || 0) - (fvInv.reserved_quantity || 0));
+        }
+      }
       return {
         ...v,
         available_inventory: vAvail,
+        outletStock: variantOutletStock,
       };
     });
   }
@@ -288,6 +354,16 @@ const getProductById = asyncHandler(async (req, res) => {
   const available_inventory = hasVariants
     ? (baseAvailable + totalVariantStock)
     : baseAvailable;
+
+  let prodOutletStock = 0;
+  let hasOutletRecord = false;
+  if (targetOutletId) {
+    const fInv = franchiseInventoryRecords.find((fi) => !fi.variant_sku);
+    if (fInv) {
+      prodOutletStock = Math.max(0, (fInv.quantity_on_hand || 0) - (fInv.reserved_quantity || 0));
+      hasOutletRecord = true;
+    }
+  }
 
   const productData = {
     ...productObj,
@@ -297,6 +373,7 @@ const getProductById = asyncHandler(async (req, res) => {
     is_takeaway_available: productObj.is_takeaway_available !== undefined ? Boolean(productObj.is_takeaway_available) : true,
     available_inventory,
     base_available_inventory: baseAvailable,
+    ...(targetOutletId ? { outletStock: prodOutletStock, hasOutletInventoryRecord: hasOutletRecord, targetOutletId } : {}),
   };
 
   res.json(new ApiResponse(200, productData, "Product fetched successfully", true));
