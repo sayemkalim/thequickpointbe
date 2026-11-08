@@ -51,5 +51,36 @@ describe("Dairy & Non-Dairy Fulfillment & Inventory Routing Architecture", () =>
     assert.equal(typeof DairyOrderService.confirmOrderPayment, "function");
     assert.equal(typeof DairyOrderService.cancelDairyOrder, "function");
   });
+
+  test("3. DairyOrderService rejects dairy product (isDairy: true) for Home Delivery", async () => {
+    const fakeDairyId = new mongoose.Types.ObjectId();
+    const Product = require("../models/productsModel");
+
+    const originalFindById = Product.findById;
+    Product.findById = (id) => ({
+      lean: async () => ({
+        _id: id,
+        name: "Sudha Milk 500ml",
+        price: 30,
+        discounted_price: 30,
+        isDairy: true,
+      }),
+    });
+
+    try {
+      await assert.rejects(
+        async () => {
+          await DairyOrderService.createDairyOrder({
+            items: [{ productId: fakeDairyId, quantity: 1 }],
+            customerPhone: "9876543210",
+            fulfillmentType: "delivery",
+          });
+        },
+        /is only available for Store Takeaway/
+      );
+    } finally {
+      Product.findById = originalFindById;
+    }
+  });
 });
 

@@ -46,11 +46,11 @@ class DairyOrderService {
     if (franchiseId) {
       franchise = await Franchise.findById(franchiseId);
     }
-    if (!franchise) {
+    if (!franchise && fulfillmentType === "pickup") {
       franchise = await Franchise.findOne({ status: "active" });
     }
-    if (!franchise) {
-      throw new Error("No active outlet available to fulfill order.");
+    if (!franchise && fulfillmentType === "pickup") {
+      throw new Error("No active outlet available to fulfill takeaway order.");
     }
 
     // 1. Resolve and validate items
@@ -130,6 +130,7 @@ class DairyOrderService {
 
         if (isPickup) {
           // --- TAKEAWAY / PICKUP FLOW ---
+          // Both isDairy: true and isDairy: false can be taken away if available in the chosen outlet's inventory.
           if (outletAvailable >= qty) {
             const updated = await FranchiseInventory.findOneAndUpdate(
               {
@@ -162,48 +163,30 @@ class DairyOrderService {
               quantity: qty,
             });
           } else {
-            // Takeaway is NOT allowed if product is not available at outlet!
-            throw new Error(
-              `"${productName}" is out of stock at this outlet for takeaway. Please choose Home Delivery or select another outlet.`
-            );
+            // Not available at outlet!
+            if (resolvedProduct?.isDairy) {
+              throw new Error(
+                `"${productName}" is out of stock at this outlet for takeaway.`
+              );
+            } else {
+              throw new Error(
+                `"${productName}" is out of stock at this outlet for takeaway. Please switch to Home Delivery.`
+              );
+            }
           }
         } else {
           // --- HOME DELIVERY FLOW ---
-          if (outletAvailable >= qty) {
-            // Outlet has stock -> fulfill from outlet!
-            const updated = await FranchiseInventory.findOneAndUpdate(
-              {
-                _id: outletInv._id,
-                $expr: {
-                  $gte: [
-                    { $subtract: ["$quantity_on_hand", "$reserved_quantity"] },
-                    qty,
-                  ],
-                },
-              },
-              { $inc: { reserved_quantity: qty } },
-              { new: true }
+          // Rule 1: Dairy products (isDairy: true) can NEVER be ordered via Home Delivery!
+          if (resolvedProduct?.isDairy) {
+            throw new Error(
+              `"${productName}" is a fresh dairy product and is only available for Store Takeaway (Pickup). Home delivery is not supported.`
             );
-
-            if (updated) {
-              orderItems[i].inventorySource = "outlet";
-              hasOutletReservation = true;
-              reservedLogs.push({
-                source: "outlet",
-                inventoryId: outletInv._id,
-                franchiseId: franchise._id,
-                productId,
-                variantSku,
-                quantity: qty,
-              });
-              continue;
-            }
           }
 
-          // Outlet does not have enough stock -> fulfill from Central Inventory!
+          // Rule 2: ALL Home Delivery orders are fulfilled strictly from Central Inventory!
           let centralInv = await Inventory.findOne({
             product: productId,
-            variant_sku: variantSku,
+            ...(variantSku ? { variant_sku: variantSku } : {}),
           });
 
           if (!centralInv && !variantSku) {
@@ -231,7 +214,7 @@ class DairyOrderService {
 
             if (!centralUpdated) {
               throw new Error(
-                `Insufficient stock for "${productName}" in Central Inventory.`
+                `Product "${productName}" is no longer available in Central Inventory for Home Delivery.`
               );
             }
 
@@ -246,7 +229,7 @@ class DairyOrderService {
             });
           } else {
             throw new Error(
-              `Insufficient stock for item "${productName}". Requested: ${qty}, Available: ${Math.max(outletAvailable, centralAvailable)}`
+              `Insufficient stock for "${productName}" in Central Inventory for Home Delivery. Requested: ${qty}, Available: ${centralAvailable}`
             );
           }
         }
@@ -431,8 +414,14 @@ class DairyOrderService {
       const qty = Number(item.quantity || 1);
 
       if (item.inventorySource === "central") {
+        const query = { product: productId };
+        if (variantSku) {
+          query.variant_sku = variantSku;
+        } else {
+          query.$or = [{ variant_sku: null }, { variant_sku: { $exists: false } }];
+        }
         await Inventory.updateOne(
-          { product: productId, variant_sku: variantSku },
+          query,
           {
             $inc: {
               quantity_on_hand: -qty,
@@ -441,8 +430,14 @@ class DairyOrderService {
           }
         );
       } else if (order.franchise) {
+        const query = { franchise: order.franchise, product: productId };
+        if (variantSku) {
+          query.variant_sku = variantSku;
+        } else {
+          query.$or = [{ variant_sku: null }, { variant_sku: { $exists: false } }];
+        }
         await FranchiseInventory.updateOne(
-          { franchise: order.franchise, product: productId, variant_sku: variantSku },
+          query,
           {
             $inc: {
               quantity_on_hand: -qty,
@@ -466,13 +461,25 @@ class DairyOrderService {
       const qty = Number(item.quantity || 1);
 
       if (item.inventorySource === "central") {
+        const query = { product: productId };
+        if (variantSku) {
+          query.variant_sku = variantSku;
+        } else {
+          query.$or = [{ variant_sku: null }, { variant_sku: { $exists: false } }];
+        }
         await Inventory.updateOne(
-          { product: productId, variant_sku: variantSku },
+          query,
           { $inc: { reserved_quantity: -qty } }
         );
       } else if (order.franchise) {
+        const query = { franchise: order.franchise, product: productId };
+        if (variantSku) {
+          query.variant_sku = variantSku;
+        } else {
+          query.$or = [{ variant_sku: null }, { variant_sku: { $exists: false } }];
+        }
         await FranchiseInventory.updateOne(
-          { franchise: order.franchise, product: productId, variant_sku: variantSku },
+          query,
           { $inc: { reserved_quantity: -qty } }
         );
       }
