@@ -18,8 +18,10 @@ router.get("/:franchiseId/low-stock", franchiseOrAdmin, scopeToFranchise, getLow
 router.get("/:franchiseId/logs", franchiseOrAdmin, scopeToFranchise, getInventoryLogs);
 router.get("/:franchiseId", franchiseOrAdmin, scopeToFranchise, getOutletInventory);
 
-// Mutation endpoints: Strictly restricted to Super Admin & Admin ONLY (Franchise Owners cannot restock or reduce)
+// Mutation endpoints:
+// Restocking strictly restricted to Super Admin & Admin ONLY (central warehouse transfer)
 router.post("/restock", centralAdmin, restockItem);
-router.post("/reduce", centralAdmin, reduceStock);
+// Offline Sales & Stock Reduction: Allowed for Franchise Owners (scoped to their outlet) and Admins
+router.post("/reduce", franchiseOrAdmin, scopeToFranchise, reduceStock);
 
 module.exports = router;

@@ -41,6 +41,11 @@ const OrderItemSchema = new mongoose.Schema({
   discounted_total_amount: {
     type: mongoose.Schema.Types.Decimal128,
     required: true
+  },
+  inventorySource: {
+    type: String,
+    enum: ["outlet", "central"],
+    default: "outlet",
   }
 });
 
@@ -100,6 +105,11 @@ const OrderSchema = new mongoose.Schema({
     enum: ["delivery", "pickup"],
     default: "delivery",
     index: true,
+  },
+  inventorySource: {
+    type: String,
+    enum: ["outlet", "central", "mixed"],
+    default: "outlet",
   },
   franchise: {
     type: mongoose.Schema.Types.ObjectId,
