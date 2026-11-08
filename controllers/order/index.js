@@ -268,8 +268,21 @@ const checkProductStock = async (productId, variantSku = null, requestedQuantity
         )
       : null;
 
-  const invQuery = { product: product._id, variant_sku: variantSku || null };
-  const inv = await Inventory.findOne(invQuery).lean();
+  const cleanVariantSku =
+    variantSku && variantSku !== "base" && variantSku !== "null" && variantSku !== "undefined"
+      ? variantSku
+      : null;
+
+  const invQuery = cleanVariantSku
+    ? { product: product._id, variant_sku: cleanVariantSku }
+    : {
+        product: product._id,
+        $or: [{ variant_sku: null }, { variant_sku: "" }, { variant_sku: "base" }, { variant_sku: { $exists: false } }],
+      };
+  let inv = await Inventory.findOne(invQuery).lean();
+  if (!inv && !cleanVariantSku) {
+    inv = await Inventory.findOne({ product: product._id }).lean();
+  }
 
   const productForStock = product.toObject ? product.toObject() : { ...product };
 

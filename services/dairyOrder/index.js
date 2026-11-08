@@ -109,7 +109,11 @@ class DairyOrderService {
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const productId = item.productId || item.product?._id || item.product;
-        const variantSku = item.variant_sku || null;
+        const rawVariantSku = item.variant_sku || item.variantSku || null;
+        const variantSku =
+          !rawVariantSku || rawVariantSku === "base" || rawVariantSku === "null" || rawVariantSku === "undefined"
+            ? null
+            : rawVariantSku;
         const qty = Number(item.quantity || 1);
         const resolvedProduct = await Product.findById(productId).lean();
         const productName = resolvedProduct?.name || "Item";
@@ -117,11 +121,26 @@ class DairyOrderService {
         // Check availability at outlet
         let outletInv = null;
         if (franchise?._id) {
-          outletInv = await FranchiseInventory.findOne({
-            franchise: franchise._id,
-            product: productId,
-            variant_sku: variantSku,
-          });
+          if (variantSku) {
+            outletInv = await FranchiseInventory.findOne({
+              franchise: franchise._id,
+              product: productId,
+              variant_sku: variantSku,
+            });
+          }
+          if (!outletInv) {
+            outletInv = await FranchiseInventory.findOne({
+              franchise: franchise._id,
+              product: productId,
+              $or: [{ variant_sku: null }, { variant_sku: "" }, { variant_sku: "base" }, { variant_sku: { $exists: false } }],
+            });
+          }
+          if (!outletInv && !variantSku) {
+            outletInv = await FranchiseInventory.findOne({
+              franchise: franchise._id,
+              product: productId,
+            });
+          }
         }
 
         const outletAvailable = outletInv
@@ -184,11 +203,19 @@ class DairyOrderService {
           }
 
           // Rule 2: ALL Home Delivery orders are fulfilled strictly from Central Inventory!
-          let centralInv = await Inventory.findOne({
-            product: productId,
-            ...(variantSku ? { variant_sku: variantSku } : {}),
-          });
-
+          let centralInv = null;
+          if (variantSku) {
+            centralInv = await Inventory.findOne({
+              product: productId,
+              variant_sku: variantSku,
+            });
+          }
+          if (!centralInv) {
+            centralInv = await Inventory.findOne({
+              product: productId,
+              $or: [{ variant_sku: null }, { variant_sku: "" }, { variant_sku: "base" }, { variant_sku: { $exists: false } }],
+            });
+          }
           if (!centralInv && !variantSku) {
             centralInv = await Inventory.findOne({ product: productId });
           }
