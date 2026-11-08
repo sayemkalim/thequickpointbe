@@ -513,7 +513,15 @@ describe("Multi-Outlet Dairy Platform Test Suite", () => {
   test("13. Manual offline counter sale and stock reduction updates inventory and creates audit log", async () => {
     const patnaFranchise = await Franchise.findOne({ code: "PAT01" });
     const milk = await Product.findOne({ sku: "DAIRY-MILK-1L" });
-    const admin = await Admin.findOne({ role: "franchise_owner", franchise: patnaFranchise._id });
+    let admin = await Admin.findOne({ role: "super_admin" });
+    if (!admin) {
+      admin = await Admin.create({
+        name: "Central Super Admin",
+        email: "central.superadmin@dairy.in",
+        password: "password123",
+        role: "super_admin",
+      });
+    }
 
     const invBefore = await FranchiseInventory.findOne({
       franchise: patnaFranchise._id,

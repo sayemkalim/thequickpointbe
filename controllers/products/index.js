@@ -64,6 +64,8 @@ const getAllProducts = asyncHandler(async (req, res) => {
     category,
     rating,
     sub_category,
+    isDairy,
+    is_dairy,
     is_best_seller,
     best_seller,
     is_new_arrival,
@@ -99,12 +101,14 @@ const getAllProducts = asyncHandler(async (req, res) => {
 
   const effectiveBestSeller = is_best_seller !== undefined ? is_best_seller : best_seller;
   const effectiveNewArrival = is_new_arrival !== undefined ? is_new_arrival : new_arrival;
+  const effectiveIsDairy = isDairy !== undefined ? isDairy : is_dairy;
 
   const products = await ProductsServices.getAllProducts({
     page: parseInt(page, 10),
     per_page: parseInt(per_page, 10),
     category: processedCategory,
     sub_category: processedSubCategory,
+    isDairy: effectiveIsDairy,
     is_best_seller: effectiveBestSeller,
     is_new_arrival: effectiveNewArrival,
     is_imported_picks,
@@ -145,6 +149,10 @@ const getAllProducts = asyncHandler(async (req, res) => {
 
       const convertedProduct = {
         ...product,
+        isDairy: Boolean(product.isDairy === true),
+        fulfillment_modes: product.fulfillment_modes || ["delivery", "pickup"],
+        is_delivery_available: product.is_delivery_available !== undefined ? Boolean(product.is_delivery_available) : true,
+        is_takeaway_available: product.is_takeaway_available !== undefined ? Boolean(product.is_takeaway_available) : true,
         sku: product.sku,
         price:
           product.price &&
@@ -283,6 +291,10 @@ const getProductById = asyncHandler(async (req, res) => {
 
   const productData = {
     ...productObj,
+    isDairy: Boolean(productObj.isDairy === true),
+    fulfillment_modes: productObj.fulfillment_modes || ["delivery", "pickup"],
+    is_delivery_available: productObj.is_delivery_available !== undefined ? Boolean(productObj.is_delivery_available) : true,
+    is_takeaway_available: productObj.is_takeaway_available !== undefined ? Boolean(productObj.is_takeaway_available) : true,
     available_inventory,
     base_available_inventory: baseAvailable,
   };
@@ -429,8 +441,45 @@ const createProduct = asyncHandler(async (req, res) => {
     ...restBody
   } = req.body;
 
+  const isDairy =
+    req.body.isDairy !== undefined
+      ? Boolean(req.body.isDairy === true || req.body.isDairy === "true" || req.body.isDairy === 1 || req.body.isDairy === "1")
+      : false;
+
+  const dairyCategory = isDairy ? (req.body.dairyCategory || null) : null;
+  const unit = req.body.unit ? String(req.body.unit).trim() : null;
+
+  let fulfillmentModes = ["delivery", "pickup"];
+  if (req.body.fulfillment_modes) {
+    if (typeof req.body.fulfillment_modes === "string") {
+      try {
+        fulfillmentModes = JSON.parse(req.body.fulfillment_modes);
+      } catch {
+        fulfillmentModes = req.body.fulfillment_modes.split(",").map((s) => s.trim());
+      }
+    } else if (Array.isArray(req.body.fulfillment_modes)) {
+      fulfillmentModes = req.body.fulfillment_modes;
+    }
+  }
+
+  const isDeliveryAvailable =
+    req.body.is_delivery_available !== undefined
+      ? Boolean(req.body.is_delivery_available === true || req.body.is_delivery_available === "true")
+      : true;
+
+  const isTakeawayAvailable =
+    req.body.is_takeaway_available !== undefined
+      ? Boolean(req.body.is_takeaway_available === true || req.body.is_takeaway_available === "true")
+      : true;
+
   const productData = {
     ...restBody,
+    isDairy,
+    dairyCategory,
+    unit,
+    fulfillment_modes: fulfillmentModes,
+    is_delivery_available: isDeliveryAvailable,
+    is_takeaway_available: isTakeawayAvailable,
     images: imageUrls,
     banner_image: bannerImageUrl,
     meta_data,
@@ -673,8 +722,46 @@ const updateProduct = asyncHandler(async (req, res) => {
     ...restBody
   } = req.body;
 
+  const isDairyUpdated =
+    req.body.isDairy !== undefined
+      ? Boolean(req.body.isDairy === true || req.body.isDairy === "true" || req.body.isDairy === 1 || req.body.isDairy === "1")
+      : (product.isDairy ?? false);
+
+  const dairyCategoryUpdated = isDairyUpdated
+    ? (req.body.dairyCategory !== undefined ? req.body.dairyCategory : product.dairyCategory)
+    : null;
+
+  let fulfillmentModesUpdated = product.fulfillment_modes || ["delivery", "pickup"];
+  if (req.body.fulfillment_modes !== undefined) {
+    if (typeof req.body.fulfillment_modes === "string") {
+      try {
+        fulfillmentModesUpdated = JSON.parse(req.body.fulfillment_modes);
+      } catch {
+        fulfillmentModesUpdated = req.body.fulfillment_modes.split(",").map((s) => s.trim());
+      }
+    } else if (Array.isArray(req.body.fulfillment_modes)) {
+      fulfillmentModesUpdated = req.body.fulfillment_modes;
+    }
+  }
+
+  const isDeliveryAvailableUpdated =
+    req.body.is_delivery_available !== undefined
+      ? Boolean(req.body.is_delivery_available === true || req.body.is_delivery_available === "true")
+      : (product.is_delivery_available ?? true);
+
+  const isTakeawayAvailableUpdated =
+    req.body.is_takeaway_available !== undefined
+      ? Boolean(req.body.is_takeaway_available === true || req.body.is_takeaway_available === "true")
+      : (product.is_takeaway_available ?? true);
+
   const productData = {
     ...restBody,
+    isDairy: isDairyUpdated,
+    dairyCategory: dairyCategoryUpdated,
+    ...(req.body.unit !== undefined ? { unit: req.body.unit ? String(req.body.unit).trim() : null } : {}),
+    fulfillment_modes: fulfillmentModesUpdated,
+    is_delivery_available: isDeliveryAvailableUpdated,
+    is_takeaway_available: isTakeawayAvailableUpdated,
     images: productImages,
     banner_image: bannerImageUrl,
     meta_data,

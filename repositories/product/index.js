@@ -9,6 +9,7 @@ const getAllProducts = async ({
   per_page,
   category,
   sub_category,
+  isDairy,
   is_best_seller,
   is_new_arrival,
   is_imported_picks,
@@ -152,6 +153,11 @@ const getAllProducts = async ({
     
     match.sub_category = { $in: foundSubCats.map(sc => sc._id) };
     console.log("Match object for sub_category:", match.sub_category);
+  }
+
+  if (isDairy !== undefined && isDairy !== null) {
+    const isDairyValue = isDairy === "true" || isDairy === true || isDairy === 1 || isDairy === "1";
+    match.isDairy = isDairyValue;
   }
 
   if (is_best_seller !== undefined && is_best_seller !== null) {

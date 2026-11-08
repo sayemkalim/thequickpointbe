@@ -139,6 +139,19 @@ const ProductSchema = new mongoose.Schema(
       type: String,
       default: null, // e.g. "500ml", "1L", "200g", "500g", "1kg"
     },
+    fulfillment_modes: {
+      type: [String],
+      enum: ["delivery", "pickup"],
+      default: ["delivery", "pickup"],
+    },
+    is_delivery_available: {
+      type: Boolean,
+      default: true,
+    },
+    is_takeaway_available: {
+      type: Boolean,
+      default: true,
+    },
     perPieceCommission: {
       type: Number,
       default: null,

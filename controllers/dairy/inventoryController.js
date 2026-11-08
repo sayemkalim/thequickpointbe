@@ -88,9 +88,15 @@ const getLowStockAlerts = asyncHandler(async (req, res) => {
 
 /**
  * Reduce stock / Record manual offline counter sale for an outlet
- * Allowed: Franchise Owner (scoped to their outlet), Super Admin, Admin
+ * Restricted strictly to Super Admin & Admin ONLY
  */
 const reduceStock = asyncHandler(async (req, res) => {
+  if (req.admin.role === "franchise_owner") {
+    return res.status(403).json(
+      new ApiResponse(403, null, "Franchise owners cannot reduce outlet inventory. Only Super Admin and Admin are permitted.", false)
+    );
+  }
+
   const franchiseId = req.scopedFranchiseId || req.body.franchiseId;
   const { productId, variantSku, sku, quantity, type = "counter_sale", reason = "" } = req.body;
 

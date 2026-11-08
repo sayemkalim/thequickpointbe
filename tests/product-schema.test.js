@@ -71,6 +71,24 @@ describe("Product Schema & Add/Edit Requirements", () => {
     assert.strictEqual(validationError, undefined, "Price tiers should not be required");
   });
 
+  it("defaults isDairy to false and supports both delivery and takeaway fulfillment modes", () => {
+    const validCatId = new mongoose.Types.ObjectId();
+    const adminId = new mongoose.Types.ObjectId();
+
+    const product = new Product({
+      name: "Chura 1Kg",
+      sku: "TEST-CHURA-1KG",
+      price: 100,
+      category: validCatId,
+      created_by_admin: adminId,
+    });
+
+    assert.strictEqual(product.isDairy, false);
+    assert.deepStrictEqual(Array.from(product.fulfillment_modes), ["delivery", "pickup"]);
+    assert.strictEqual(product.is_delivery_available, true);
+    assert.strictEqual(product.is_takeaway_available, true);
+  });
+
   it("FranchiseInventoryService and FranchiseService export required methods", () => {
     const FranchiseInventoryService = require("../services/franchiseInventory/index");
     const FranchiseService = require("../services/franchise/index");
