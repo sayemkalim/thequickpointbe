@@ -44,3 +44,4 @@ router.put(
 router.delete("/:id", adminOrSuperAdmin, SecondBannerController.deleteBanner);
 
 module.exports = router;
+

@@ -51,3 +51,4 @@ SecondBannerSchema.index({ is_active: 1, order: 1 });
 
 const SecondBanner = mongoose.model("SecondBanner", SecondBannerSchema);
 module.exports = SecondBanner;
+
