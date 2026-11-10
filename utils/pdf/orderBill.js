@@ -29,16 +29,16 @@ const LOGO_PATH = path.join(
   "..",
   "public",
   "email-assets",
-  "shagun-beauty-logo.png"
+  "quickpoint-logo.png"
 );
 
-const COMPANY_NAME = process.env.COMPANY_NAME || "Shagun Beauty";
+const COMPANY_NAME = "THE QUICK POINT";
 const COMPANY_ADDRESS =
-  process.env.COMPANY_ADDRESS || "Pachraya, Etawah (U.P.)- 206001";
-const COMPANY_GSTIN = process.env.COMPANY_GSTIN || "09FCCPS7816H1Z4";
-const COMPANY_UPI_ID = process.env.COMPANY_UPI_ID || "9045791373-3@ybl";
-const COMPANY_SUPPORT_EMAIL =
-  process.env.COMPANY_SUPPORT_EMAIL || "helpshagunbeauty@gmail.com";
+  "Behind HDFC Bank Main Road Barbigha (Sheikhpura) 811101";
+const COMPANY_FSSAI = "FASSI No. 20424181000174";
+const COMPANY_PHONE = "9934993423";
+const COMPANY_GSTIN = "10BETPK0389C2ZN, State: 10-Bihar";
+const COMPANY_SUPPORT_EMAIL = "thequickpointbarbigha@gmail.com";
 
 const PAGE_MARGIN = 40;
 const PAGE_WIDTH = 515; // A4 (595.28) - 2 * 40
