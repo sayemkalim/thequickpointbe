@@ -667,14 +667,55 @@ class DairyOrderService {
       throw new Error("Order was already picked up in a concurrent request.");
     }
 
-    // 5. Commit reserved inventory deduction
+    // 5. Commit reserved inventory deduction and record sales logs
     try {
       await FranchiseInventoryService.commitReservedStock(
         updatedOrder.franchise,
         updatedOrder.items
       );
+
+      // Create Sales Log entry in OutletStockLog for each picked up item
+      const OutletStockLog = require("../../models/outletStockLogModel");
+      const FranchiseInventory = require("../../models/franchiseInventoryModel");
+      for (const item of updatedOrder.items) {
+        const prodId = item.product?._id || item.product || item.productId;
+        const vSku = item.variant_sku || null;
+        const itemSku = item.sku || vSku || "";
+        const qty = Number(item.quantity || 1);
+
+        const currentInv = await FranchiseInventory.findOne({
+          franchise: updatedOrder.franchise,
+          product: prodId,
+          ...(vSku ? { variant_sku: vSku } : {}),
+        });
+
+        const qtyAfter = currentInv ? Number(currentInv.quantity_on_hand || 0) : 0;
+        const qtyBefore = qtyAfter + qty;
+
+        await OutletStockLog.create({
+          franchise: updatedOrder.franchise,
+          product: prodId,
+          variant_sku: vSku,
+          sku: itemSku,
+          quantity: qty,
+          type: "online_sale",
+          quantity_before: qtyBefore,
+          quantity_after: qtyAfter,
+          reason: `Online order #${updatedOrder.orderNumber} picked up via OTP`,
+          order: updatedOrder._id,
+          order_number: updatedOrder.orderNumber,
+          customer_name:
+            updatedOrder.guestInfo?.name ||
+            updatedOrder.shippingAddress?.fullName ||
+            updatedOrder.user?.name ||
+            "Online Customer",
+          recorded_by: staffAdmin._id,
+          recorded_by_name: staffAdmin.name || "Outlet Staff",
+          recorded_by_role: staffAdmin.role || "franchise_owner",
+        });
+      }
     } catch (invErr) {
-      console.error("Failed to commit reserved stock on pickup:", invErr.message);
+      console.error("Failed to commit reserved stock or create sales log on pickup:", invErr.message);
     }
 
     // 6. Record immutable Commission Ledger (Duplicate-Safe)

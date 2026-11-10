@@ -428,12 +428,28 @@ class FranchiseInventoryService {
       query.product = productId;
     }
     if (type && type !== "all") {
-      query.type = type;
+      if (type === "online_sale" || type === "online") {
+        query.type = { $in: ["online_sale", "online_pickup"] };
+      } else if (type === "counter_sale" || type === "counter" || type === "offline") {
+        query.type = "counter_sale";
+      } else if (type === "damage" || type === "waste_spoilage") {
+        query.type = { $in: ["damage", "waste_spoilage"] };
+      } else {
+        query.type = type;
+      }
+    }
+
+    const baseStatsQuery = {};
+    if (franchiseId && franchiseId !== "all") {
+      baseStatsQuery.franchise = franchiseId;
+    }
+    if (productId) {
+      baseStatsQuery.product = productId;
     }
 
     const skip = (Math.max(1, Number(page)) - 1) * Number(per_page);
 
-    const [logs, total] = await Promise.all([
+    const [logs, total, onlineCount, offlineCount, damageCount, adjustmentCount] = await Promise.all([
       OutletStockLog.find(query)
         .populate("franchise", "name outletCode address city phone")
         .populate("product", "name sku banner_image unit dairyCategory price discounted_price")
@@ -443,11 +459,22 @@ class FranchiseInventoryService {
         .limit(Number(per_page))
         .lean(),
       OutletStockLog.countDocuments(query),
+      OutletStockLog.countDocuments({ ...baseStatsQuery, type: { $in: ["online_sale", "online_pickup"] } }),
+      OutletStockLog.countDocuments({ ...baseStatsQuery, type: "counter_sale" }),
+      OutletStockLog.countDocuments({ ...baseStatsQuery, type: { $in: ["damage", "waste_spoilage"] } }),
+      OutletStockLog.countDocuments({ ...baseStatsQuery, type: "adjustment" }),
     ]);
 
     return {
       logs,
       total,
+      stats: {
+        all: onlineCount + offlineCount + damageCount + adjustmentCount,
+        online_sales: onlineCount,
+        counter_sales: offlineCount,
+        damage: damageCount,
+        adjustment: adjustmentCount,
+      },
       page: Number(page),
       per_page: Number(per_page),
       total_pages: Math.ceil(total / Number(per_page)),

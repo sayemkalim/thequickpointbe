@@ -29,9 +29,22 @@ const OutletStockLogSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["counter_sale", "waste_spoilage", "damage", "adjustment", "other"],
+      enum: ["online_sale", "online_pickup", "counter_sale", "waste_spoilage", "damage", "adjustment", "other"],
       default: "counter_sale",
       index: true,
+    },
+    order: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Order",
+      default: null,
+    },
+    order_number: {
+      type: Number,
+      default: null,
+    },
+    customer_name: {
+      type: String,
+      default: "",
     },
     quantity_before: {
       type: Number,
