@@ -557,17 +557,10 @@ OrderSchema.set("toJSON", {
       ret.finalTotalAmount = parseFloat(ret.finalTotalAmount.toString());
     }
 
-    // Format orderNumber as TQP{random4}-{serial}
+    // Format orderNumber as clean sequential number
     if (ret.orderNumber !== undefined && ret.orderNumber !== null) {
       const rawNum = String(ret.orderNumber).trim().replace(/^[#a-zA-Z\-_]+/, "").trim();
-      const numStr = rawNum || "1";
-      const seed = String(ret._id || numStr);
-      let hash = 0;
-      for (let i = 0; i < seed.length; i++) {
-        hash = (hash * 31 + seed.charCodeAt(i)) % 9000;
-      }
-      const random4 = String(1000 + Math.abs(hash));
-      ret.orderNumber = `TQP${random4}-${numStr}`;
+      ret.orderNumber = rawNum || ret.orderNumber;
     }
 
     // Ensure ret.items is an array before mapping
@@ -640,17 +633,10 @@ OrderSchema.set("toObject", {
       ret.finalTotalAmount = parseFloat(ret.finalTotalAmount.toString());
     }
 
-    // Format orderNumber as TQP{random4}-{serial}
+    // Format orderNumber as clean sequential number
     if (ret.orderNumber !== undefined && ret.orderNumber !== null) {
       const rawNum = String(ret.orderNumber).trim().replace(/^[#a-zA-Z\-_]+/, "").trim();
-      const numStr = rawNum || "1";
-      const seed = String(ret._id || numStr);
-      let hash = 0;
-      for (let i = 0; i < seed.length; i++) {
-        hash = (hash * 31 + seed.charCodeAt(i)) % 9000;
-      }
-      const random4 = String(1000 + Math.abs(hash));
-      ret.orderNumber = `TQP${random4}-${numStr}`;
+      ret.orderNumber = rawNum || ret.orderNumber;
     }
 
     if (Array.isArray(ret.items)) {

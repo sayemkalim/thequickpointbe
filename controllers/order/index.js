@@ -546,80 +546,11 @@ const getAllOrders = asyncHandler(async (req, res) => {
 });
 
 const createGuestOrder = asyncHandler(async (req, res) => {
-  const {
-    items,
-    address,
-    customerName,
-    customerPhone,
-    customerEmail,
-    franchiseId,
-    fulfillmentType,
-  } = req.body;
-
-  if (Array.isArray(items) && items.length > 0) {
-    const phone = customerPhone || address?.mobile || req.body.phone;
-    if (!phone) {
-      return res
-        .status(400)
-        .json(new ApiResponse(400, null, "Customer phone number is required", false));
-    }
-
-    const resolvedCouponCode =
-      req.body.couponCode || req.body.coupon_code || req.body.coupon || req.body.code || null;
-    const resolvedDiscountAmount = Number(
-      req.body.couponDiscountAmount ??
-      req.body.coupon_discount_amount ??
-      req.body.discountAmount ??
-      req.body.discount_amount ??
-      req.body.discount ??
-      req.body.couponDiscount ??
-      0
-    );
-    const resolvedCouponId =
-      req.body.couponId ||
-      req.body.coupon_id ||
-      (req.body.coupon && mongoose.Types.ObjectId.isValid(req.body.coupon) ? req.body.coupon : null);
-
-    try {
-      const result = await DairyOrderService.createDairyOrder({
-        user: null,
-        customerName: customerName || address?.name || "Customer",
-        customerPhone: phone,
-        customerEmail: customerEmail || address?.email || null,
-        franchiseId,
-        items,
-        fulfillmentType: fulfillmentType || (address ? "delivery" : "pickup"),
-        address: address || null,
-        shippingCost: req.body.shippingCost || 0,
-        paymentGateway: "cashfree",
-        couponCode: resolvedCouponCode,
-        couponDiscountAmount: resolvedDiscountAmount,
-        couponId: resolvedCouponId,
-      });
-
-      return res.status(201).json(
-        new ApiResponse(
-          201,
-          {
-            orderId: result.order._id,
-            order: result.order,
-            gatewayDetails: result.gatewayDetails,
-            data: result.order,
-          },
-          "Order initiated successfully",
-          true,
-        ),
-      );
-    } catch (err) {
-      return res.status(400).json(new ApiResponse(400, null, err.message, false));
-    }
-  }
-
-  return res.status(400).json(
+  return res.status(401).json(
     new ApiResponse(
-      400,
+      401,
       null,
-      "Valid items array and phone number are required to place an order.",
+      "Guest checkout is strictly disabled. Please log in with your mobile number to place an order.",
       false,
     ),
   );
@@ -877,6 +808,16 @@ const prepareCartOrderData = async ({
 
 const createOrder = asyncHandler(async (req, res) => {
   const user = req.user || null;
+  if (!user) {
+    return res.status(401).json(
+      new ApiResponse(
+        401,
+        null,
+        "Authentication required. Guest orders are not permitted. Please log in with your mobile number to place an order.",
+        false,
+      ),
+    );
+  }
   const userId = user?._id || null;
   const {
     cartId,

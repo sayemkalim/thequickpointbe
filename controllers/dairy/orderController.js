@@ -11,6 +11,16 @@ const CashfreeProvider = require("../../services/payment/cashfreeProvider");
  * Reserves stock atomically, calculates immutable commission snapshot, creates gateway order.
  */
 const checkout = asyncHandler(async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json(
+      new ApiResponse(
+        401,
+        null,
+        "Authentication required. Guest orders are not permitted. Please log in to place an order.",
+        false,
+      ),
+    );
+  }
   const {
     franchiseId,
     items,
