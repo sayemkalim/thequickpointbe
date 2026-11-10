@@ -337,6 +337,12 @@ class FranchiseInventoryService {
       throw new Error("Quantity to deduct must be a positive number.");
     }
 
+    if (type === "adjustment" && adminRole === "franchise_owner") {
+      throw new Error(
+        "Franchise owners cannot perform Stock Less / Audit Adjustment. Only Super Admin can adjust stock."
+      );
+    }
+
     const query = {
       franchise: franchiseId,
       product: productId,
