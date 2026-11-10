@@ -536,6 +536,7 @@ OrderSchema.pre("save", async function (next) {
 
 OrderSchema.set("toJSON", {
   transform: (doc, ret) => {
+    ret.orderId = ret._id ? ret._id.toString() : ret._id;
     // Convert totalAmount and discountedTotalAmount to number with null checks
     if (ret.totalAmount) {
       ret.totalAmount = parseFloat(ret.totalAmount.toString());
@@ -556,12 +557,17 @@ OrderSchema.set("toJSON", {
       ret.finalTotalAmount = parseFloat(ret.finalTotalAmount.toString());
     }
 
-    // Format orderNumber with OD- prefix in API responses
+    // Format orderNumber as TQP{random4}-{serial}
     if (ret.orderNumber !== undefined && ret.orderNumber !== null) {
-      const numStr = String(ret.orderNumber).trim().replace(/^#/, "");
-      ret.orderNumber = numStr.toUpperCase().startsWith("OD-")
-        ? numStr.toUpperCase()
-        : `OD-${numStr}`;
+      const rawNum = String(ret.orderNumber).trim().replace(/^[#a-zA-Z\-_]+/, "").trim();
+      const numStr = rawNum || "1";
+      const seed = String(ret._id || numStr);
+      let hash = 0;
+      for (let i = 0; i < seed.length; i++) {
+        hash = (hash * 31 + seed.charCodeAt(i)) % 9000;
+      }
+      const random4 = String(1000 + Math.abs(hash));
+      ret.orderNumber = `TQP${random4}-${numStr}`;
     }
 
     // Ensure ret.items is an array before mapping
@@ -614,6 +620,7 @@ OrderSchema.set("toJSON", {
 
 OrderSchema.set("toObject", {
   transform: (doc, ret) => {
+    ret.orderId = ret._id ? ret._id.toString() : ret._id;
     if (ret.totalAmount) {
       ret.totalAmount = parseFloat(ret.totalAmount.toString());
     }
@@ -633,12 +640,17 @@ OrderSchema.set("toObject", {
       ret.finalTotalAmount = parseFloat(ret.finalTotalAmount.toString());
     }
 
-    // Format orderNumber with OD- prefix in API responses
+    // Format orderNumber as TQP{random4}-{serial}
     if (ret.orderNumber !== undefined && ret.orderNumber !== null) {
-      const numStr = String(ret.orderNumber).trim().replace(/^#/, "");
-      ret.orderNumber = numStr.toUpperCase().startsWith("OD-")
-        ? numStr.toUpperCase()
-        : `OD-${numStr}`;
+      const rawNum = String(ret.orderNumber).trim().replace(/^[#a-zA-Z\-_]+/, "").trim();
+      const numStr = rawNum || "1";
+      const seed = String(ret._id || numStr);
+      let hash = 0;
+      for (let i = 0; i < seed.length; i++) {
+        hash = (hash * 31 + seed.charCodeAt(i)) % 9000;
+      }
+      const random4 = String(1000 + Math.abs(hash));
+      ret.orderNumber = `TQP${random4}-${numStr}`;
     }
 
     if (Array.isArray(ret.items)) {

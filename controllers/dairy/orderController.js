@@ -81,6 +81,7 @@ const checkout = asyncHandler(async (req, res) => {
       new ApiResponse(
         201,
         {
+          orderId: result.order._id,
           order: result.order,
           gatewayDetails: result.gatewayDetails,
           fulfillmentDetails: {

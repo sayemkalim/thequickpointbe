@@ -601,6 +601,7 @@ const createGuestOrder = asyncHandler(async (req, res) => {
         new ApiResponse(
           201,
           {
+            orderId: result.order._id,
             order: result.order,
             gatewayDetails: result.gatewayDetails,
             data: result.order,
@@ -939,6 +940,7 @@ const createOrder = asyncHandler(async (req, res) => {
         new ApiResponse(
           201,
           {
+            orderId: result.order._id,
             order: result.order,
             gatewayDetails: result.gatewayDetails,
             data: result.order,
