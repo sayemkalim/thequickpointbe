@@ -564,6 +564,22 @@ const createGuestOrder = asyncHandler(async (req, res) => {
         .json(new ApiResponse(400, null, "Customer phone number is required", false));
     }
 
+    const resolvedCouponCode =
+      req.body.couponCode || req.body.coupon_code || req.body.coupon || req.body.code || null;
+    const resolvedDiscountAmount = Number(
+      req.body.couponDiscountAmount ??
+      req.body.coupon_discount_amount ??
+      req.body.discountAmount ??
+      req.body.discount_amount ??
+      req.body.discount ??
+      req.body.couponDiscount ??
+      0
+    );
+    const resolvedCouponId =
+      req.body.couponId ||
+      req.body.coupon_id ||
+      (req.body.coupon && mongoose.Types.ObjectId.isValid(req.body.coupon) ? req.body.coupon : null);
+
     try {
       const result = await DairyOrderService.createDairyOrder({
         user: null,
@@ -576,6 +592,9 @@ const createGuestOrder = asyncHandler(async (req, res) => {
         address: address || null,
         shippingCost: req.body.shippingCost || 0,
         paymentGateway: "cashfree",
+        couponCode: resolvedCouponCode,
+        couponDiscountAmount: resolvedDiscountAmount,
+        couponId: resolvedCouponId,
       });
 
       return res.status(201).json(
@@ -883,6 +902,22 @@ const createOrder = asyncHandler(async (req, res) => {
         .json(new ApiResponse(400, null, "Customer phone number is required", false));
     }
 
+    const resolvedCouponCode =
+      req.body.couponCode || req.body.coupon_code || req.body.coupon || req.body.code || couponCode || null;
+    const resolvedDiscountAmount = Number(
+      req.body.couponDiscountAmount ??
+      req.body.coupon_discount_amount ??
+      req.body.discountAmount ??
+      req.body.discount_amount ??
+      req.body.discount ??
+      req.body.couponDiscount ??
+      0
+    );
+    const resolvedCouponId =
+      req.body.couponId ||
+      req.body.coupon_id ||
+      (req.body.coupon && mongoose.Types.ObjectId.isValid(req.body.coupon) ? req.body.coupon : null);
+
     try {
       const result = await DairyOrderService.createDairyOrder({
         user,
@@ -895,6 +930,9 @@ const createOrder = asyncHandler(async (req, res) => {
         address: address || null,
         shippingCost: req.body.shippingCost || 0,
         paymentGateway: "cashfree",
+        couponCode: resolvedCouponCode,
+        couponDiscountAmount: resolvedDiscountAmount,
+        couponId: resolvedCouponId,
       });
 
       return res.status(201).json(

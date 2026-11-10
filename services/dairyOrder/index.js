@@ -10,6 +10,8 @@ const CommissionService = require("../commission/index");
 const SmsService = require("../sms/index");
 const razorpay = require("../../config/razorpay");
 const CashfreeProvider = require("../payment/cashfreeProvider");
+const Coupon = require("../../models/couponModel");
+const CouponService = require("../coupon/index");
 
 class DairyOrderService {
   /**
@@ -34,6 +36,9 @@ class DairyOrderService {
     fulfillmentType = "pickup",
     address = null,
     shippingCost = 0,
+    couponCode = null,
+    couponDiscountAmount = 0,
+    couponId = null,
   }) {
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new Error("Order items are required.");
@@ -323,7 +328,34 @@ class DairyOrderService {
       };
     }
 
-    // 5. Build order object
+    // 5. Resolve Coupon & Discount
+    let resolvedCouponDoc = null;
+    let resolvedCouponId = couponId;
+    let resolvedDiscount = Number(couponDiscountAmount || 0);
+
+    if (couponCode) {
+      try {
+        const cleanCode = String(couponCode).trim().toUpperCase();
+        resolvedCouponDoc = await Coupon.findOne({ code: cleanCode, is_active: true });
+        if (resolvedCouponDoc) {
+          resolvedCouponId = resolvedCouponDoc._id;
+          if (resolvedDiscount <= 0 && CouponService?.calculateDiscount) {
+            resolvedDiscount = CouponService.calculateDiscount(resolvedCouponDoc, calculatedTotalAmount);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not resolve coupon doc in createDairyOrder:", err.message);
+      }
+    }
+
+    const finalCouponDiscount = Math.max(0, Math.min(calculatedTotalAmount, resolvedDiscount));
+    const discountedSubtotal = Math.max(0, calculatedTotalAmount - finalCouponDiscount);
+    const finalOrderAmount = Math.max(
+      0,
+      discountedSubtotal + (fulfillmentType === "delivery" ? Number(shippingCost || 0) : 0)
+    );
+
+    // 6. Build order object
     const order = new Order({
       orderNumber,
       user: user?._id || null,
@@ -339,9 +371,12 @@ class DairyOrderService {
       franchise: franchise._id,
       address: formattedAddress,
       totalAmount: calculatedTotalAmount,
-      discountedTotalAmount: calculatedTotalAmount,
-      finalTotalAmount: calculatedTotalAmount + (fulfillmentType === "delivery" ? Number(shippingCost || 0) : 0),
+      discountedTotalAmount: discountedSubtotal,
+      finalTotalAmount: finalOrderAmount,
       shippingCost: fulfillmentType === "delivery" ? Number(shippingCost || 0) : 0,
+      coupon: resolvedCouponId || null,
+      couponCode: couponCode ? String(couponCode).trim().toUpperCase() : (resolvedCouponDoc ? resolvedCouponDoc.code : null),
+      couponDiscountAmount: finalCouponDiscount,
       status: "pending",
       paymentStatus: "pending",
       paymentMode: "ONLINE",
@@ -350,14 +385,14 @@ class DairyOrderService {
       pickupOtpExpires: fulfillmentType === "delivery" ? null : pickupOtpExpires,
     });
 
-    // 6. Calculate immutable commission snapshot
+    // 7. Calculate immutable commission snapshot
     const commissionSnapshot = await CommissionService.calculateOrderCommission(
       order,
       franchise
     );
     order.commissionSnapshot = commissionSnapshot;
 
-    // 7. Initialize Payment Gateway Order
+    // 8. Initialize Payment Gateway Order
     let gatewayOrderDetails = null;
 
     if (paymentGateway === "cashfree" || !paymentGateway) {
@@ -365,7 +400,7 @@ class DairyOrderService {
       if (isCfEnabled) {
         gatewayOrderDetails = await CashfreeProvider.createPaymentSession({
           orderId: order._id,
-          orderAmount: order.finalTotalAmount || calculatedTotalAmount,
+          orderAmount: finalOrderAmount,
           customerId: user?._id ? String(user._id) : `CUST_${customerPhone}`,
           customerPhone,
           customerEmail,
@@ -387,14 +422,14 @@ class DairyOrderService {
         gatewayOrderDetails = {
           provider: "razorpay",
           razorpayOrderId: order.razorpayOrderId,
-          amount: Math.round((order.finalTotalAmount || calculatedTotalAmount) * 100),
+          amount: Math.round(finalOrderAmount * 100),
           currency: "INR",
           keyId: "rzp_test_key",
         };
       } else {
         try {
           const razorpayOrder = await razorpay.orders.create({
-            amount: Math.round((order.finalTotalAmount || calculatedTotalAmount) * 100), // in paise
+            amount: Math.round(finalOrderAmount * 100), // in paise
             currency: "INR",
             receipt: `dairy_rcpt_${orderNumber}`,
             notes: {
@@ -555,6 +590,21 @@ class DairyOrderService {
         });
       } catch (smsErr) {
         console.error("Pickup OTP SMS error:", smsErr.message);
+      }
+    }
+
+    // Track coupon usage if coupon was applied
+    if (order.coupon) {
+      try {
+        await CouponService.applyCouponUsage({
+          couponId: order.coupon,
+          userId: order.user,
+          orderId: order._id,
+          discountAmount: Number(order.couponDiscountAmount || 0),
+          orderTotal: Number(order.totalAmount || 0),
+        });
+      } catch (couponUsageErr) {
+        console.warn("Failed to record coupon usage in confirmOrderPayment:", couponUsageErr.message);
       }
     }
 
