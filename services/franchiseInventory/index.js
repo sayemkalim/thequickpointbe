@@ -419,6 +419,44 @@ class FranchiseInventoryService {
     type = null,
   }) {
     const OutletStockLog = require("../../models/outletStockLogModel");
+
+    // Auto-sync any existing picked up orders to OutletStockLog if not yet recorded
+    try {
+      const Order = require("../../models/orderModel");
+      const unloggedOrders = await Order.find({
+        fulfillmentType: "pickup",
+        pickupStatus: "picked_up",
+      }).limit(50).lean();
+
+      for (const ord of unloggedOrders) {
+        for (const itm of ord.items || []) {
+          const prodId = itm.product?._id || itm.product;
+          if (!prodId) continue;
+          const exists = await OutletStockLog.exists({
+            order: ord._id,
+            product: prodId,
+          });
+          if (!exists) {
+            await OutletStockLog.create({
+              franchise: ord.franchise,
+              product: prodId,
+              variant_sku: itm.variant_sku || null,
+              sku: itm.product?.sku || "",
+              quantity: itm.quantity,
+              type: "online_sale",
+              order: ord._id,
+              order_number: ord.orderNumber,
+              customer_name: ord.guestInfo?.name || ord.address?.name || "App Customer",
+              reason: `Customer online app order #${ord.orderNumber} picked up`,
+              createdAt: ord.pickedUpAt || ord.updatedAt || ord.createdAt,
+            });
+          }
+        }
+      }
+    } catch (err) {
+      // Non-fatal, proceed with query
+    }
+
     const query = {};
 
     if (franchiseId && franchiseId !== "all") {
