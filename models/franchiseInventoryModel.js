@@ -33,6 +33,11 @@ const FranchiseInventorySchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    online_sold_quantity: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     manual_sold_quantity: {
       type: Number,
       default: 0,

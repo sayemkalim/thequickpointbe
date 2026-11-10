@@ -556,6 +556,16 @@ describe("Multi-Outlet Dairy Platform Test Suite", () => {
     assert.equal(invAfterSale.total_sold_quantity, soldBefore + 3);
     assert.equal(invAfterSale.manual_sold_quantity, 3);
 
+    // Verify listByFranchise formats both online and offline sold quantities
+    const listRes = await FranchiseInventoryService.listByFranchise({ franchiseId: patnaFranchise._id });
+    const milkItem = listRes.items.find((i) => i.sku === "DAIRY-MILK-1L");
+    assert.equal(milkItem.online_sold_quantity, 2, "online_sold_quantity must be 2 from earlier pickup");
+    assert.equal(milkItem.offline_sold_quantity, 3, "offline_sold_quantity must be 3 from counter sale");
+    assert.equal(milkItem.total_sold_quantity, 5, "total_sold_quantity must be 5 (2 online + 3 offline)");
+    assert.equal(listRes.stats.online_sold, 2);
+    assert.equal(listRes.stats.offline_sold, 3);
+    assert.equal(listRes.stats.total_sold, 5);
+
     // 2. Reduce stock due to damage/spoilage (1 packet)
     const damageResult = await FranchiseInventoryService.reduceStock({
       franchiseId: patnaFranchise._id,

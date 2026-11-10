@@ -472,6 +472,7 @@ class DairyOrderService {
               quantity_on_hand: -qty,
               reserved_quantity: -qty,
               total_sold_quantity: qty,
+              online_sold_quantity: qty,
             },
           }
         );

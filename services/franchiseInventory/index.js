@@ -40,19 +40,28 @@ class FranchiseInventoryService {
 
     // Format metrics: who sold how many pcs, who has how many on hand, and how many are remaining
     const formatted = items.map((inv) => {
-      const soldQty = inv.total_sold_quantity || 0;
-      const onHandQty = inv.quantity_on_hand || 0;
-      const reservedQty = inv.reserved_quantity || 0;
+      const totalSoldQty = Number(inv.total_sold_quantity || 0);
+      const offlineSoldQty = Number(inv.manual_sold_quantity || 0);
+      const onlineSoldQty =
+        inv.online_sold_quantity !== undefined && inv.online_sold_quantity !== null
+          ? Number(inv.online_sold_quantity)
+          : Math.max(0, totalSoldQty - offlineSoldQty);
+      const effectiveTotalSold = Math.max(totalSoldQty, onlineSoldQty + offlineSoldQty);
+      const onHandQty = Number(inv.quantity_on_hand || 0);
+      const reservedQty = Number(inv.reserved_quantity || 0);
       const restockedQty =
         inv.total_restocked_quantity && inv.total_restocked_quantity > 0
-          ? inv.total_restocked_quantity
-          : onHandQty + soldQty;
+          ? Number(inv.total_restocked_quantity)
+          : onHandQty + effectiveTotalSold;
       const availableQty = Math.max(0, onHandQty - reservedQty);
 
       return {
         ...inv,
         total_restocked_quantity: restockedQty,
-        total_sold_quantity: soldQty,
+        total_sold_quantity: effectiveTotalSold,
+        online_sold_quantity: onlineSoldQty,
+        offline_sold_quantity: offlineSoldQty,
+        manual_sold_quantity: offlineSoldQty,
         quantity_on_hand: onHandQty,
         reserved_quantity: reservedQty,
         available_quantity: availableQty,
@@ -64,6 +73,8 @@ class FranchiseInventoryService {
     const stats = {
       total_restocked: formatted.reduce((acc, i) => acc + (i.total_restocked_quantity || 0), 0),
       total_sold: formatted.reduce((acc, i) => acc + (i.total_sold_quantity || 0), 0),
+      online_sold: formatted.reduce((acc, i) => acc + (i.online_sold_quantity || 0), 0),
+      offline_sold: formatted.reduce((acc, i) => acc + (i.offline_sold_quantity || 0), 0),
       total_on_hand: formatted.reduce((acc, i) => acc + (i.quantity_on_hand || 0), 0),
       total_available: formatted.reduce((acc, i) => acc + (i.available_quantity || 0), 0),
       total_reserved: formatted.reduce((acc, i) => acc + (i.reserved_quantity || 0), 0),
@@ -294,6 +305,7 @@ class FranchiseInventoryService {
             quantity_on_hand: -qty,
             reserved_quantity: -qty,
             total_sold_quantity: qty,
+            online_sold_quantity: qty,
           },
         }
       );
