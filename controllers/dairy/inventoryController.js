@@ -231,7 +231,10 @@ const createStockTransfer = asyncHandler(async (req, res) => {
         sku: it.sku || "",
         unit: it.unit || "pcs",
         quantity: qty,
+        online_sold: 0,
+        manual_sold: 0,
         price: Number(it.price || 0),
+        hsn: it.hsn || "",
       });
 
       totalQty += qty;
@@ -332,6 +335,15 @@ const saveFranchiseInvoice = asyncHandler(async (req, res) => {
     created_by_name: req.admin?.name || "Admin",
   });
 
+  if (req.body.transferId) {
+    await FranchiseStockTransfer.findByIdAndUpdate(req.body.transferId, {
+      is_billed: true,
+      invoice: invoice._id,
+      invoice_no: invoice.invoice_no,
+      status: "billed",
+    });
+  }
+
   return res.status(201).json(
     new ApiResponse(201, invoice, `Invoice #${autoInvoiceNo} saved successfully!`, true)
   );
@@ -352,6 +364,53 @@ const getFranchiseInvoices = asyncHandler(async (req, res) => {
   );
 });
 
+
+/**
+ * Update online & manual sales for a specific stock transfer
+ */
+const updateTransferSales = asyncHandler(async (req, res) => {
+  const { transferId } = req.params;
+  const { items } = req.body;
+
+  if (!transferId || !Array.isArray(items)) {
+    return res.status(400).json(
+      new ApiResponse(400, null, "transferId and items array are required.", false)
+    );
+  }
+
+  const transfer = await FranchiseStockTransfer.findById(transferId);
+  if (!transfer) {
+    return res.status(404).json(
+      new ApiResponse(404, null, "Stock transfer record not found.", false)
+    );
+  }
+
+  for (const it of items) {
+    const pId = String(it.productId || it.product?._id || it.product);
+    const existing = transfer.items.find((item) => String(item.product) === pId);
+    if (existing) {
+      if (it.manual_sold !== undefined) {
+        existing.manual_sold = Math.max(0, Number(it.manual_sold) || 0);
+      }
+      if (it.online_sold !== undefined) {
+        existing.online_sold = Math.max(0, Number(it.online_sold) || 0);
+      }
+    }
+  }
+
+  transfer.total_sold_quantity = transfer.items.reduce(
+    (sum, i) => sum + (Number(i.online_sold) || 0) + (Number(i.manual_sold) || 0),
+    0
+  );
+
+  await transfer.save();
+
+  return res.status(200).json(
+    new ApiResponse(200, transfer, "Transfer sales updated successfully", true)
+  );
+});
+
+
 module.exports = {
   getOutletInventory,
   restockItem,
@@ -363,5 +422,6 @@ module.exports = {
   getStockTransfers,
   saveFranchiseInvoice,
   getFranchiseInvoices,
+  updateTransferSales,
 };
 

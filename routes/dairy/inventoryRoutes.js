@@ -11,6 +11,7 @@ const {
   getStockTransfers,
   saveFranchiseInvoice,
   getFranchiseInvoices,
+  updateTransferSales,
 } = require("../../controllers/dairy/inventoryController");
 const {
   franchiseOrAdmin,
@@ -26,6 +27,7 @@ router.get("/:franchiseId/invoices", franchiseOrAdmin, scopeToFranchise, getFran
 router.post("/:franchiseId/invoices", franchiseOrAdmin, scopeToFranchise, saveFranchiseInvoice);
 router.get("/:franchiseId/transfers", franchiseOrAdmin, scopeToFranchise, getStockTransfers);
 router.post("/transfer", centralAdmin, createStockTransfer);
+router.put("/transfers/:transferId/sales", franchiseOrAdmin, scopeToFranchise, updateTransferSales);
 // Public read-only outlet inventory lookup for storefront, PDP, and PLP stock availability
 router.get("/:franchiseId", getOutletInventory);
 

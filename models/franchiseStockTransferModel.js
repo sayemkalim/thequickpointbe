@@ -28,16 +28,27 @@ const FranchiseStockTransferSchema = new mongoose.Schema(
         name: { type: String, default: "" },
         sku: { type: String, default: "" },
         unit: { type: String, default: "pcs" },
-        quantity: { type: Number, required: true },
+        quantity: { type: Number, required: true }, // Dispatched Quantity
+        online_sold: { type: Number, default: 0 },
+        manual_sold: { type: Number, default: 0 },
         price: { type: Number, default: 0 },
+        hsn: { type: String, default: "" },
       },
     ],
-    total_quantity: { type: Number, default: 0 },
+    total_quantity: { type: Number, default: 0 }, // Total Dispatched
+    total_sold_quantity: { type: Number, default: 0 },
     total_items: { type: Number, default: 0 },
+    is_billed: { type: Boolean, default: false },
+    invoice: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "FranchiseInvoice",
+      default: null,
+    },
+    invoice_no: { type: String, default: "" },
     status: {
       type: String,
-      enum: ["dispatched", "received", "settled"],
-      default: "dispatched",
+      enum: ["active", "billed", "dispatched", "received", "settled"],
+      default: "active",
     },
     dispatched_by: {
       type: mongoose.Schema.Types.ObjectId,
