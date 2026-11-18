@@ -324,6 +324,15 @@ class FranchiseInventoryService {
     quantity,
     type = "counter_sale",
     reason = "",
+    customerName = "",
+    customerMobile = "",
+    unitPrice = 0,
+    totalAmount = 0,
+    receivedAmount = 0,
+    dueAmount = 0,
+    paymentMethod = "cash",
+    billNo = "",
+    batchId = "",
     adminId = null,
     adminName = "",
     adminRole = "",
@@ -402,6 +411,15 @@ class FranchiseInventoryService {
       type,
       quantity_before: qtyBefore,
       quantity_after: qtyAfter,
+      customer_name: customerName || "",
+      customer_mobile: customerMobile || "",
+      unit_price: Number(unitPrice) || 0,
+      total_amount: Number(totalAmount) || 0,
+      received_amount: Number(receivedAmount) || 0,
+      due_amount: Number(dueAmount) || 0,
+      payment_method: paymentMethod || "cash",
+      bill_no: billNo || "",
+      batch_id: batchId || "",
       reason: reason || (type === "counter_sale" ? "Manual counter / offline sale" : "Manual stock reduction"),
       recorded_by: adminId,
       recorded_by_name: adminName,
@@ -524,6 +542,139 @@ class FranchiseInventoryService {
       total_pages: Math.ceil(total / Number(per_page)),
     };
   }
+
+  /**
+   * Get daily counter sale and stock settlement summary
+   */
+  async getDailySummary({ franchiseId, date = null }) {
+    const OutletStockLog = require("../../models/outletStockLogModel");
+    const Franchise = require("../../models/franchiseModel");
+
+    // Resolve target date range (start of day to end of day)
+    let startOfDay, endOfDay;
+    if (date) {
+      const parts = date.split("-");
+      if (parts.length === 3) {
+        startOfDay = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 0, 0, 0, 0);
+        endOfDay = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 23, 59, 59, 999);
+      } else {
+        const d = new Date(date);
+        startOfDay = new Date(d.setHours(0, 0, 0, 0));
+        endOfDay = new Date(d.setHours(23, 59, 59, 999));
+      }
+    } else {
+      const now = new Date();
+      startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    }
+
+    const logQuery = {
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+    };
+
+    if (franchiseId && franchiseId !== "all") {
+      logQuery.franchise = franchiseId;
+    }
+
+    const logs = await OutletStockLog.find(logQuery)
+      .populate("franchise", "name outletCode address city phone")
+      .populate("product", "name sku banner_image unit dairyCategory price discounted_price")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const allOutlets = await Franchise.find({}).select("name outletCode address city phone").lean();
+
+    let totalCounterRevenue = 0;
+    let totalCash = 0;
+    let totalUpi = 0;
+    let totalCard = 0;
+    let totalDue = 0;
+    let totalCounterUnits = 0;
+    let totalOnlineUnits = 0;
+    let totalDamageUnits = 0;
+
+    const outletMap = {};
+    for (const out of allOutlets) {
+      outletMap[String(out._id)] = {
+        franchiseId: out._id,
+        name: out.name,
+        outletCode: out.outletCode,
+        city: out.city,
+        counterRevenue: 0,
+        cashCollected: 0,
+        upiCollected: 0,
+        cardCollected: 0,
+        dueAmount: 0,
+        counterUnits: 0,
+        onlineUnits: 0,
+        damageUnits: 0,
+      };
+    }
+
+    for (const log of logs) {
+      const fId = String(log.franchise?._id || log.franchise || "");
+      const qty = Number(log.quantity || 0);
+      const amount = Number(log.total_amount || (qty * (log.unit_price || log.product?.discounted_price || log.product?.price || 0)));
+      const method = log.payment_method || "cash";
+      const rec = Number(log.received_amount !== undefined && log.received_amount !== null ? log.received_amount : amount);
+      const due = Number(log.due_amount || 0);
+
+      if (log.type === "counter_sale") {
+        totalCounterRevenue += amount;
+        totalCounterUnits += qty;
+        totalDue += due;
+
+        if (method === "cash") totalCash += rec;
+        else if (method === "upi") totalUpi += rec;
+        else if (method === "card") totalCard += rec;
+        else totalCash += rec;
+
+        if (outletMap[fId]) {
+          outletMap[fId].counterRevenue += amount;
+          outletMap[fId].counterUnits += qty;
+          outletMap[fId].dueAmount += due;
+          if (method === "cash") outletMap[fId].cashCollected += rec;
+          else if (method === "upi") outletMap[fId].upiCollected += rec;
+          else if (method === "card") outletMap[fId].cardCollected += rec;
+          else outletMap[fId].cashCollected += rec;
+        }
+      } else if (log.type === "online_sale" || log.type === "online_pickup") {
+        totalOnlineUnits += qty;
+        if (outletMap[fId]) {
+          outletMap[fId].onlineUnits += qty;
+        }
+      } else if (log.type === "damage" || log.type === "waste_spoilage") {
+        totalDamageUnits += qty;
+        if (outletMap[fId]) {
+          outletMap[fId].damageUnits += qty;
+        }
+      }
+    }
+
+    const uniqueBills = new Set();
+    logs.forEach(l => {
+      if (l.bill_no) uniqueBills.add(l.bill_no);
+      else if (l.batch_id) uniqueBills.add(l.batch_id);
+    });
+
+    return {
+      date: startOfDay.toISOString().split("T")[0],
+      summary: {
+        totalCounterRevenue,
+        totalCash,
+        totalUpi,
+        totalCard,
+        totalDue,
+        totalCounterUnits,
+        totalOnlineUnits,
+        totalDamageUnits,
+        totalBills: uniqueBills.size || logs.filter(l => l.type === "counter_sale").length,
+      },
+      outlets: Object.values(outletMap),
+      logs,
+    };
+  }
+
 }
 
 module.exports = new FranchiseInventoryService();

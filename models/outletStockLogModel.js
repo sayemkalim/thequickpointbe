@@ -46,6 +46,42 @@ const OutletStockLogSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    customer_mobile: {
+      type: String,
+      default: "",
+    },
+    unit_price: {
+      type: Number,
+      default: 0,
+    },
+    total_amount: {
+      type: Number,
+      default: 0,
+    },
+    received_amount: {
+      type: Number,
+      default: 0,
+    },
+    due_amount: {
+      type: Number,
+      default: 0,
+    },
+    payment_method: {
+      type: String,
+      enum: ["cash", "upi", "card", "credit", "online", "other"],
+      default: "cash",
+    },
+    bill_no: {
+      type: String,
+      default: "",
+      index: true,
+    },
+    batch_id: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
     quantity_before: {
       type: Number,
       required: true,

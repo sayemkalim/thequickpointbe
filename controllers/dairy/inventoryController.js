@@ -92,7 +92,23 @@ const getLowStockAlerts = asyncHandler(async (req, res) => {
  */
 const reduceStock = asyncHandler(async (req, res) => {
   const franchiseId = req.scopedFranchiseId || req.body.franchiseId;
-  const { productId, variantSku, sku, quantity, type = "counter_sale", reason = "" } = req.body;
+  const {
+    productId,
+    variantSku,
+    sku,
+    quantity,
+    type = "counter_sale",
+    reason = "",
+    customerName,
+    customerMobile,
+    unitPrice,
+    totalAmount,
+    receivedAmount,
+    dueAmount,
+    paymentMethod,
+    billNo,
+    batchId,
+  } = req.body;
 
   if (!franchiseId || !productId || quantity === undefined) {
     return res
@@ -109,6 +125,15 @@ const reduceStock = asyncHandler(async (req, res) => {
       quantity,
       type,
       reason,
+      customerName,
+      customerMobile,
+      unitPrice,
+      totalAmount,
+      receivedAmount,
+      dueAmount,
+      paymentMethod,
+      billNo,
+      batchId,
       adminId: req.admin._id,
       adminName: req.admin.name || "Staff",
       adminRole: req.admin.role,
@@ -145,10 +170,29 @@ const getInventoryLogs = asyncHandler(async (req, res) => {
   );
 });
 
+
+/**
+ * Get daily sales and stock settlement summary
+ */
+const getDailySummary = asyncHandler(async (req, res) => {
+  const franchiseId = req.scopedFranchiseId || req.params.franchiseId;
+  const { date } = req.query;
+
+  const result = await FranchiseInventoryService.getDailySummary({
+    franchiseId,
+    date,
+  });
+
+  return res.status(200).json(
+    new ApiResponse(200, result, "Daily summary fetched successfully", true)
+  );
+});
+
 module.exports = {
   getOutletInventory,
   restockItem,
   getLowStockAlerts,
   reduceStock,
   getInventoryLogs,
+  getDailySummary,
 };
