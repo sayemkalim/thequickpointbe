@@ -47,6 +47,8 @@ const FranchiseInvoiceSchema = new mongoose.Schema(
     },
     received_amount: { type: Number, default: 0 },
     balance_due: { type: Number, default: 0 },
+    previous_due: { type: Number, default: 0 },
+    net_total_due: { type: Number, default: 0 },
     notes: { type: String, default: "" },
     created_by_admin: {
       type: mongoose.Schema.Types.ObjectId,
