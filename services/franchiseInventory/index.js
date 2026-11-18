@@ -30,7 +30,7 @@ class FranchiseInventoryService {
     const [items, total] = await Promise.all([
       FranchiseInventory.find(query)
         .populate("franchise", "name outletCode address city phone")
-        .populate("product", "name sku price discounted_price banner_image isDairy dairyCategory unit")
+        .populate("product", "name sku price discounted_price banner_image isDairy dairyCategory unit variants")
         .sort({ updatedAt: -1 })
         .skip(skip)
         .limit(per_page)
@@ -55,8 +55,35 @@ class FranchiseInventoryService {
           : onHandQty + effectiveTotalSold;
       const availableQty = Math.max(0, onHandQty - reservedQty);
 
+      // Normalize product prices from Decimal128 or variants
+      let prodPrice = 0;
+      let prodDiscountedPrice = 0;
+      if (inv.product) {
+        const p = inv.product;
+        if (p.price) {
+          prodPrice = p.price.$numberDecimal ? parseFloat(p.price.$numberDecimal) : parseFloat(p.price.toString());
+        }
+        if (p.discounted_price) {
+          prodDiscountedPrice = p.discounted_price.$numberDecimal ? parseFloat(p.discounted_price.$numberDecimal) : parseFloat(p.discounted_price.toString());
+        }
+        if ((!prodPrice || isNaN(prodPrice)) && Array.isArray(p.variants)) {
+          const matchVar = p.variants.find((v) => (v.sku && (v.sku === inv.variant_sku || v.sku === inv.sku)) || (v._id && String(v._id) === String(inv.variant_id)));
+          if (matchVar) {
+            if (matchVar.price) {
+              prodPrice = matchVar.price.$numberDecimal ? parseFloat(matchVar.price.$numberDecimal) : parseFloat(matchVar.price.toString());
+            }
+            if (matchVar.discounted_price) {
+              prodDiscountedPrice = matchVar.discounted_price.$numberDecimal ? parseFloat(matchVar.discounted_price.$numberDecimal) : parseFloat(matchVar.discounted_price.toString());
+            }
+          }
+        }
+      }
+      if (isNaN(prodPrice)) prodPrice = 0;
+      if (isNaN(prodDiscountedPrice)) prodDiscountedPrice = 0;
+
       return {
         ...inv,
+        product: inv.product ? { ...inv.product, price: prodPrice, discounted_price: prodDiscountedPrice } : inv.product,
         total_restocked_quantity: restockedQty,
         total_sold_quantity: effectiveTotalSold,
         online_sold_quantity: onlineSoldQty,
