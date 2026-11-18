@@ -599,7 +599,7 @@ class FranchiseInventoryService {
         franchiseId: out._id,
         name: out.name,
         outletCode: out.outletCode,
-        city: out.city,
+        city: out.city || out.address?.city || "Patna",
         counterRevenue: 0,
         cashCollected: 0,
         upiCollected: 0,
