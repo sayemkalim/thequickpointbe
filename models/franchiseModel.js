@@ -88,7 +88,7 @@ const FranchiseSchema = new mongoose.Schema(
       enum: ["active", "inactive", "temporary_closed"],
       default: "active",
     },
-    // Commission override specific to this franchise
+    // Commission configuration specific to this franchise
     commissionOverride: {
       enabled: { type: Boolean, default: false },
       type: {
@@ -101,6 +101,46 @@ const FranchiseSchema = new mongoose.Schema(
         default: 10,
         min: 0,
       },
+      scope: {
+        type: String,
+        enum: ["online_only", "online_and_walkin"],
+        default: "online_only",
+      },
+      calculationBasis: {
+        type: String,
+        enum: ["order_total", "subtotal"],
+        default: "order_total",
+      },
+      effectiveFrom: {
+        type: Date,
+        default: Date.now,
+      },
+      history: [
+        {
+          type: {
+            type: String,
+            enum: ["percentage", "fixed_per_piece"],
+          },
+          value: Number,
+          scope: {
+            type: String,
+            enum: ["online_only", "online_and_walkin"],
+          },
+          calculationBasis: {
+            type: String,
+            enum: ["order_total", "subtotal"],
+          },
+          effectiveFrom: Date,
+          updatedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Admin",
+          },
+          updatedAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
     },
     operatingHours: {
       openingTime: { type: String, default: "06:00" },

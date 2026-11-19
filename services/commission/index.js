@@ -39,40 +39,26 @@ class CommissionService {
     for (const item of items) {
       const qty = Number(item.quantity || 1);
       totalQty += qty;
+      const product = item.product || {};
 
       const itemAmount = Number(
         item.discounted_total_amount || item.total_amount || 0
       );
       const unitPrice = qty > 0 ? itemAmount / qty : 0;
 
-      // Check product-level override
-      let rateType = null;
-      let rateValue = null;
+      let rateType = "percentage";
+      let rateValue = 10;
 
-      const product = item.product;
-      if (product) {
-        if (product.perPieceCommission !== undefined && product.perPieceCommission !== null) {
-          rateType = "fixed_per_piece";
-          rateValue = Number(product.perPieceCommission);
-        } else if (
-          product.commissionPercentage !== undefined &&
-          product.commissionPercentage !== null
-        ) {
-          rateType = "percentage";
-          rateValue = Number(product.commissionPercentage);
-        }
-      }
-
-      // If no product override, check franchise override
-      if (rateType === null && resolvedFranchise?.commissionOverride?.enabled) {
+      // Franchise-level commission override is primary
+      if (resolvedFranchise?.commissionOverride?.enabled !== false && resolvedFranchise?.commissionOverride?.value !== undefined) {
         rateType = resolvedFranchise.commissionOverride.type || "percentage";
         rateValue = Number(resolvedFranchise.commissionOverride.value || 10);
-      }
-
-      // If still no override, use global store settings
-      if (rateType === null) {
+      } else if (globalCommission) {
         rateType = globalCommission.type || "percentage";
         rateValue = Number(globalCommission.value || 10);
+      } else {
+        rateType = "percentage";
+        rateValue = 10;
       }
 
       let outletItemAmount = 0;
@@ -159,6 +145,17 @@ class CommissionService {
         breakdown: activeSnapshot.breakdown || [],
         status: "accrued",
       });
+
+      // Post Net Online Settlement to Franchise Khata Book
+      try {
+        const FranchiseLedgerService = require("../franchiseLedger/index");
+        await FranchiseLedgerService.recordOnlineSaleSettlement({
+          order,
+          commissionResult: ledgerEntry,
+        });
+      } catch (khataErr) {
+        console.error("Khata Book online settlement posting error:", khataErr.message);
+      }
 
       return ledgerEntry;
     } catch (error) {
