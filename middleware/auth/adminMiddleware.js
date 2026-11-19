@@ -52,22 +52,31 @@ module.exports = {
   
   // Guard ensuring franchise owners can ONLY access their own outlet's resources
   scopeToFranchise: (req, res, next) => {
-    if (!req.admin) {
-      return res.status(401).json(new ApiResponse(401, null, "Authentication required", false));
-    }
-    const isCentral = ["super_admin", "admin"].includes(req.admin.role);
-    if (req.admin.role === "franchise_owner") {
-      if (!req.admin.franchise) {
-        return res.status(403).json(new ApiResponse(403, null, "No franchise assigned to this owner account", false));
+    try {
+      if (!req.admin) {
+        return res.status(401).json(new ApiResponse(401, null, "Authentication required", false));
       }
-      const targetFranchise = req.params.franchiseId || req.body.franchiseId || req.query.franchiseId || req.body.franchise;
-      if (targetFranchise && String(targetFranchise) !== String(req.admin.franchise)) {
-        return res.status(403).json(new ApiResponse(403, null, "Unauthorized: You can only access your assigned franchise outlet.", false));
+      const isCentral = ["super_admin", "admin"].includes(req.admin.role);
+      const body = req.body || {};
+      const params = req.params || {};
+      const query = req.query || {};
+
+      if (req.admin.role === "franchise_owner") {
+        if (!req.admin.franchise) {
+          return res.status(403).json(new ApiResponse(403, null, "No franchise assigned to this owner account", false));
+        }
+        const targetFranchise = params.franchiseId || body.franchiseId || query.franchiseId || body.franchise;
+        if (targetFranchise && String(targetFranchise) !== String(req.admin.franchise)) {
+          return res.status(403).json(new ApiResponse(403, null, "Unauthorized: You can only access your assigned franchise outlet.", false));
+        }
+        req.scopedFranchiseId = req.admin.franchise;
+      } else if (isCentral) {
+        const rawId = params.franchiseId || body.franchiseId || query.franchiseId || body.franchise || null;
+        req.scopedFranchiseId = (rawId && rawId !== "all" && rawId !== "undefined" && rawId !== "null") ? rawId : null;
       }
-      req.scopedFranchiseId = req.admin.franchise;
-    } else if (isCentral) {
-      req.scopedFranchiseId = req.params.franchiseId || req.body.franchiseId || req.query.franchiseId || req.body.franchise || null;
+      next();
+    } catch (err) {
+      return res.status(500).json(new ApiResponse(500, null, err.message, false));
     }
-    next();
   },
 };

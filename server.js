@@ -106,6 +106,18 @@ app.use("/", (req, res) => {
   res.json({ message: "API WORKING" });
 });
 
+// Global JSON error handler
+app.use((err, req, res, next) => {
+  console.error("Unhandled API Error:", err.message || err);
+  const status = typeof err.statusCode === "number" ? err.statusCode : typeof err.status === "number" ? err.status : 500;
+  return res.status(status).json({
+    statusCode: status,
+    data: null,
+    message: err.message || "Internal server error",
+    success: false,
+  });
+});
+
 app.use((req, res) => res.status(404).json({ message: "Route not found" }));
 
 const PORT = process.env.PORT || 5000;

@@ -123,26 +123,35 @@ class StockChallanService {
   async getChallans({ franchiseId, status, startDate, endDate, search, page = 1, limit = 50 }) {
     const match = {};
 
-    if (franchiseId && franchiseId !== "all") {
-      match.franchise = franchiseId;
+    if (franchiseId && franchiseId !== "all" && franchiseId !== "undefined" && franchiseId !== "null") {
+      if (mongoose.Types.ObjectId.isValid(franchiseId)) {
+        match.franchise = franchiseId;
+      }
     }
     if (status && status !== "all") {
       match.status = status;
     }
     if (startDate || endDate) {
-      match.dispatchDate = {};
-      if (startDate) match.dispatchDate.$gte = new Date(startDate);
-      if (endDate) {
+      const dateQuery = {};
+      if (startDate && !isNaN(new Date(startDate).getTime())) {
+        dateQuery.$gte = new Date(startDate);
+      }
+      if (endDate && !isNaN(new Date(endDate).getTime())) {
         const eDate = new Date(endDate);
         eDate.setHours(23, 59, 59, 999);
-        match.dispatchDate.$lte = eDate;
+        dateQuery.$lte = eDate;
+      }
+      if (Object.keys(dateQuery).length > 0) {
+        match.dispatchDate = dateQuery;
       }
     }
-    if (search) {
+    if (search && typeof search === "string" && search.trim()) {
       match.challanNumber = new RegExp(search.trim(), "i");
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
+    const safePage = Math.max(1, parseInt(page, 10) || 1);
+    const safeLimit = Math.max(1, Math.min(200, parseInt(limit, 10) || 50));
+    const skip = (safePage - 1) * safeLimit;
 
     const [challans, totalCount] = await Promise.all([
       StockChallan.find(match)
@@ -150,18 +159,18 @@ class StockChallanService {
         .populate("createdBy", "name email")
         .sort({ dispatchDate: -1, createdAt: -1 })
         .skip(skip)
-        .limit(Number(limit))
+        .limit(safeLimit)
         .lean(),
       StockChallan.countDocuments(match),
     ]);
 
     return {
-      challans,
+      challans: Array.isArray(challans) ? challans : [],
       pagination: {
         total: totalCount,
-        page: Number(page),
-        limit: Number(limit),
-        pages: Math.ceil(totalCount / Number(limit)),
+        page: safePage,
+        limit: safeLimit,
+        pages: Math.ceil(totalCount / safeLimit),
       },
     };
   }
