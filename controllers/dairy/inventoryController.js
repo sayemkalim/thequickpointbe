@@ -304,10 +304,25 @@ const saveFranchiseInvoice = asyncHandler(async (req, res) => {
 
   const autoInvoiceNo = invoiceNo || `${Math.floor(1000 + Math.random() * 9000)}`;
 
+  let challanNo = req.body.challanNo || req.body.challan_no || "";
+  let challanDate = req.body.challanDate || req.body.challan_date || null;
+  const transferId = req.body.transferId || req.body.transfer_id || null;
+
+  if (transferId && (!challanNo || !challanDate)) {
+    const tr = await FranchiseStockTransfer.findById(transferId);
+    if (tr) {
+      challanNo = challanNo || tr.challan_no;
+      challanDate = challanDate || tr.date;
+    }
+  }
+
   const invoice = await FranchiseInvoice.create({
     invoice_no: autoInvoiceNo,
     franchise: franchiseId,
     date: date ? new Date(date) : new Date(),
+    challan_no: challanNo,
+    challan_date: challanDate ? new Date(challanDate) : null,
+    transfer: transferId || null,
     items: items.map((it) => ({
       product: it.productId || it.product?._id || it.product,
       name: it.name,

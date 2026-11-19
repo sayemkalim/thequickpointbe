@@ -49,6 +49,13 @@ const FranchiseInvoiceSchema = new mongoose.Schema(
     balance_due: { type: Number, default: 0 },
     previous_due: { type: Number, default: 0 },
     net_total_due: { type: Number, default: 0 },
+    challan_no: { type: String, default: "" },
+    challan_date: { type: Date, default: null },
+    transfer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "FranchiseStockTransfer",
+      default: null,
+    },
     notes: { type: String, default: "" },
     created_by_admin: {
       type: mongoose.Schema.Types.ObjectId,
