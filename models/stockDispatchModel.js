@@ -171,3 +171,4 @@ StockDispatchSchema.index({ status: 1, dispatched_date: -1 });
 const StockDispatch = mongoose.model("StockDispatch", StockDispatchSchema);
 
 module.exports = StockDispatch;
+

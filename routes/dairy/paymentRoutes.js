@@ -29,3 +29,4 @@ router.post("/:id/verify", centralAdmin, verifyPayment);
 router.post("/:id/reject", centralAdmin, rejectPayment);
 
 module.exports = router;
+

@@ -88,6 +88,13 @@ const FranchiseSchema = new mongoose.Schema(
       enum: ["active", "inactive", "temporary_closed"],
       default: "active",
     },
+    // Simple Franchise Commission Percentage (e.g. 10%, 8%, 12%)
+    commissionPercentage: {
+      type: Number,
+      default: 10,
+      min: 0,
+      max: 100,
+    },
     // Commission configuration specific to this franchise
     commissionOverride: {
       enabled: { type: Boolean, default: false },

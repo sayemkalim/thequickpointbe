@@ -219,3 +219,4 @@ class FranchisePaymentService {
 }
 
 module.exports = new FranchisePaymentService();
+

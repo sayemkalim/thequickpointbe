@@ -336,3 +336,4 @@ class PosBillingService {
 }
 
 module.exports = new PosBillingService();
+

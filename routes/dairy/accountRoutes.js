@@ -25,3 +25,4 @@ router.get("/:franchiseId/statement", franchiseOrAdmin, scopeToFranchise, getFra
 router.post("/:franchiseId/adjustment", centralAdmin, postAdjustment);
 
 module.exports = router;
+

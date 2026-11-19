@@ -21,3 +21,4 @@ router.put("/:franchiseId", centralAdmin, updateCommissionConfig);
 router.get("/:franchiseId/logs", franchiseOrAdmin, scopeToFranchise, getCommissionLogs);
 
 module.exports = router;
+

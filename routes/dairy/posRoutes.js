@@ -24,3 +24,4 @@ router.get("/:id", franchiseOrAdmin, getPosBillDetails);
 router.post("/:id/collect-due", franchiseOrAdmin, collectCustomerDuePayment);
 
 module.exports = router;
+

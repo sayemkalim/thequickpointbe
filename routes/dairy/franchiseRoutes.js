@@ -11,6 +11,10 @@ const {
   regenerateQrCode,
   updateOutletLocation,
 } = require("../../controllers/dairy/franchiseController");
+const {
+  getFranchiseSalesSummary,
+  getFranchiseStockSummary,
+} = require("../../controllers/dairy/settlementController");
 const { centralAdmin, franchiseOrAdmin } = require("../../middleware/auth/adminMiddleware");
 
 // Public endpoints
@@ -18,6 +22,8 @@ router.get("/nearby", getNearbyOutlets);
 router.get("/qr/:token", scanOutletQr);
 router.get("/", listOutlets);
 router.get("/:id", getOutletById);
+router.get("/:id/sales-summary", franchiseOrAdmin, getFranchiseSalesSummary);
+router.get("/:id/stock-summary", franchiseOrAdmin, getFranchiseStockSummary);
 
 // Outlet Location GPS Capture (Accessible by Central Admin OR assigned Franchise Owner from store)
 router.patch("/:id/location", franchiseOrAdmin, updateOutletLocation);

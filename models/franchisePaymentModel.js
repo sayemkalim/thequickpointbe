@@ -106,3 +106,4 @@ const FranchisePayment = mongoose.model(
 );
 
 module.exports = FranchisePayment;
+

@@ -188,6 +188,18 @@ const CounterBillSchema = new mongoose.Schema(
       ref: "Admin",
       default: null,
     },
+    // End of Day / Restock Settlement Tracking
+    isSettled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    settlement: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "FranchiseSettlement",
+      default: null,
+      index: true,
+    },
     billed_by_name: {
       type: String,
       default: "Outlet Staff",
@@ -206,3 +218,4 @@ CounterBillSchema.index({ franchise: 1, payment_status: 1 });
 const CounterBill = mongoose.model("CounterBill", CounterBillSchema);
 
 module.exports = CounterBill;
+

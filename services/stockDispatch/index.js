@@ -322,3 +322,4 @@ class StockDispatchService {
 }
 
 module.exports = new StockDispatchService();
+

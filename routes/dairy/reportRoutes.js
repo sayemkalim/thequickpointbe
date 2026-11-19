@@ -25,3 +25,4 @@ router.get("/customer-dues", franchiseOrAdmin, scopeToFranchise, getCustomerDues
 router.get("/inventory-reconciliation", franchiseOrAdmin, scopeToFranchise, getInventoryReconciliationReport);
 
 module.exports = router;
+

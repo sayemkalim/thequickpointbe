@@ -29,3 +29,4 @@ router.post("/:id/receive", franchiseOrAdmin, confirmStockReceipt);
 router.post("/:id/cancel", centralAdmin, cancelDispatchInvoice);
 
 module.exports = router;
+

@@ -115,3 +115,4 @@ const FranchiseAccountLedger = mongoose.model(
 );
 
 module.exports = FranchiseAccountLedger;
+
