@@ -24,6 +24,7 @@ class StockChallanService {
 
     const processedItems = [];
     let totalQuantity = 0;
+    let totalAmount = 0;
 
     for (const item of items) {
       const qty = parseInt(item.quantity, 10);
@@ -36,16 +37,24 @@ class StockChallanService {
         throw new Error(`Product not found: ${item.product || item.productId}`);
       }
 
+      const unitPrice = Number(
+        item.price || item.pricePerUnit || product.discounted_price || product.price || 0
+      );
+      const lineAmount = Number((unitPrice * qty).toFixed(2));
+
       processedItems.push({
         product: product._id,
         name: product.name,
         sku: product.sku || item.sku || "",
         unit: product.unit || item.unit || "pcs",
         quantity: qty,
+        price: unitPrice,
+        amount: lineAmount,
         receivedQuantity: qty,
       });
 
       totalQuantity += qty;
+      totalAmount += lineAmount;
     }
 
     const challanNumber = await StockChallan.generateChallanNumber();
@@ -55,6 +64,7 @@ class StockChallanService {
       franchise: franchise._id,
       items: processedItems,
       totalQuantity,
+      totalAmount: Number(totalAmount.toFixed(2)),
       dispatchDate: new Date(),
       status: "dispatched",
       notes: notes || "",
@@ -260,6 +270,7 @@ class StockChallanService {
 
     const processedItems = [];
     let totalQuantity = 0;
+    let totalAmount = 0;
 
     for (const item of items) {
       const qty = parseInt(item.quantity, 10);
@@ -268,16 +279,24 @@ class StockChallanService {
       const product = await Product.findById(item.product || item.productId);
       if (!product) continue;
 
+      const unitPrice = Number(
+        item.price || item.pricePerUnit || product.discounted_price || product.price || 0
+      );
+      const lineAmount = Number((unitPrice * qty).toFixed(2));
+
       processedItems.push({
         product: product._id,
         name: product.name,
         sku: product.sku || item.sku || "",
         unit: product.unit || item.unit || "pcs",
         quantity: qty,
+        price: unitPrice,
+        amount: lineAmount,
         receivedQuantity: qty,
       });
 
       totalQuantity += qty;
+      totalAmount += lineAmount;
     }
 
     if (processedItems.length === 0) {
@@ -291,6 +310,7 @@ class StockChallanService {
       franchise: franchise._id,
       items: processedItems,
       totalQuantity,
+      totalAmount: Number(totalAmount.toFixed(2)),
       dispatchDate: new Date(),
       status: "dispatched",
       notes: notes || "Auto-generated upon restock dispatch",

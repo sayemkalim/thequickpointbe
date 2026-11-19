@@ -29,6 +29,14 @@ const StockChallanItemSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
+    price: {
+      type: Number,
+      default: 0,
+    },
+    amount: {
+      type: Number,
+      default: 0,
+    },
     receivedQuantity: {
       type: Number,
       default: null,
@@ -64,6 +72,10 @@ const StockChallanSchema = new mongoose.Schema(
     totalQuantity: {
       type: Number,
       required: true,
+      default: 0,
+    },
+    totalAmount: {
+      type: Number,
       default: 0,
     },
     dispatchDate: {
