@@ -1,4 +1,7 @@
 const mongoose = require("mongoose");
+require("./franchiseModel");
+require("./productsModel");
+require("./adminModel");
 
 const SettlementStockItemSchema = new mongoose.Schema(
   {
