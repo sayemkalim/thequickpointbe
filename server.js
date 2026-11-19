@@ -36,12 +36,7 @@ const dairyFranchiseRoutes = require("./routes/dairy/franchiseRoutes.js");
 const dairyInventoryRoutes = require("./routes/dairy/inventoryRoutes.js");
 const dairyOrderRoutes = require("./routes/dairy/orderRoutes.js");
 const dairySettingsRoutes = require("./routes/dairy/settingsRoutes.js");
-const dairyDispatchRoutes = require("./routes/dairy/dispatchRoutes.js");
-const dairyAccountRoutes = require("./routes/dairy/accountRoutes.js");
-const dairyPaymentRoutes = require("./routes/dairy/paymentRoutes.js");
 const dairyPosRoutes = require("./routes/dairy/posRoutes.js");
-const dairyCommissionRoutes = require("./routes/dairy/commissionRoutes.js");
-const dairyReportRoutes = require("./routes/dairy/reportRoutes.js");
 const dairyChallanRoutes = require("./routes/dairy/challanRoutes.js");
 const dairySettlementRoutes = require("./routes/dairy/settlementRoutes.js");
 
@@ -96,18 +91,13 @@ app.use("/api/marquee", marqueeRoutes);
 
 // Multi-Outlet Dairy Routes
 app.use("/api/dairy/outlets", dairyFranchiseRoutes);
+app.use("/api/dairy/franchise", dairyFranchiseRoutes);
 app.use("/api/dairy/inventory", dairyInventoryRoutes);
 app.use("/api/dairy/orders", dairyOrderRoutes);
 app.use("/api/dairy/settings", dairySettingsRoutes);
-app.use("/api/dairy/dispatch", dairyDispatchRoutes);
-app.use("/api/dairy/accounts", dairyAccountRoutes);
-app.use("/api/dairy/payments", dairyPaymentRoutes);
 app.use("/api/dairy/pos", dairyPosRoutes);
-app.use("/api/dairy/commissions", dairyCommissionRoutes);
-app.use("/api/dairy/reports", dairyReportRoutes);
 app.use("/api/dairy/challans", dairyChallanRoutes);
 app.use("/api/dairy/settlements", dairySettlementRoutes);
-app.use("/api/dairy/franchise", dairyFranchiseRoutes);
 
 app.use("/api-doc", swaggerUI.serve, swaggerUI.setup(swaggerSpec));
 

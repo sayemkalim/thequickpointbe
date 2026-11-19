@@ -186,3 +186,4 @@ describe("QuickPoint Simple Franchise Stock Challan & Daily Settlement Suite", (
     assert.equal(typeof SettlementService.getFranchiseStockSummary, "function");
   });
 });
+

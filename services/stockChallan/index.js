@@ -232,6 +232,65 @@ class StockChallanService {
 
     return challan;
   }
+
+  /**
+   * Create Stock Challan record for an already completed restock (avoids double incrementing inventory)
+   */
+  async createChallanRecordOnly({ franchiseId, items, notes = "", admin = null }) {
+    if (!franchiseId) {
+      throw new Error("Franchise is required.");
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error("Challan must contain at least one product item.");
+    }
+
+    const franchise = await Franchise.findById(franchiseId);
+    if (!franchise) {
+      throw new Error("Franchise outlet not found.");
+    }
+
+    const processedItems = [];
+    let totalQuantity = 0;
+
+    for (const item of items) {
+      const qty = parseInt(item.quantity, 10);
+      if (isNaN(qty) || qty <= 0) continue;
+
+      const product = await Product.findById(item.product || item.productId);
+      if (!product) continue;
+
+      processedItems.push({
+        product: product._id,
+        name: product.name,
+        sku: product.sku || item.sku || "",
+        unit: product.unit || item.unit || "pcs",
+        quantity: qty,
+        receivedQuantity: qty,
+      });
+
+      totalQuantity += qty;
+    }
+
+    if (processedItems.length === 0) {
+      throw new Error("No valid items to include in challan.");
+    }
+
+    const challanNumber = await StockChallan.generateChallanNumber();
+
+    const challan = new StockChallan({
+      challanNumber,
+      franchise: franchise._id,
+      items: processedItems,
+      totalQuantity,
+      dispatchDate: new Date(),
+      status: "dispatched",
+      notes: notes || "Auto-generated upon restock dispatch",
+      createdBy: admin?._id || null,
+    });
+
+    await challan.save();
+    return challan;
+  }
 }
 
 module.exports = new StockChallanService();

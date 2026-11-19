@@ -182,3 +182,4 @@ const FranchiseSettlement = mongoose.model(
 );
 
 module.exports = FranchiseSettlement;
+

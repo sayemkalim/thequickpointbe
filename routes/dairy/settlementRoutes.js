@@ -31,3 +31,4 @@ router.get("/:id", franchiseOrAdmin, getSettlementDetails);
 router.post("/:id/payment", centralAdmin, recordSettlementPayment);
 
 module.exports = router;
+

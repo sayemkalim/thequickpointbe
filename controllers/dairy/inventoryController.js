@@ -30,8 +30,9 @@ const getOutletInventory = asyncHandler(async (req, res) => {
 });
 
 /**
- * Restock an item in an outlet
+ * Restock an item (or batch of items) in an outlet
  * Restricted strictly to Super Admin & Admin ONLY
+ * Automatically creates a Stock Challan for every restock dispatch
  */
 const restockItem = asyncHandler(async (req, res) => {
   if (req.admin.role === "franchise_owner") {
@@ -41,27 +42,84 @@ const restockItem = asyncHandler(async (req, res) => {
   }
 
   const franchiseId = req.scopedFranchiseId || req.body.franchiseId;
-  const { productId, variantSku, sku, quantity, lowStockThreshold } = req.body;
+  const { productId, variantSku, sku, quantity, lowStockThreshold, items, notes } = req.body;
 
-  if (!franchiseId || !productId || quantity === undefined) {
+  if (!franchiseId) {
     return res
       .status(400)
-      .json(new ApiResponse(400, null, "franchiseId, productId, and quantity are required", false));
+      .json(new ApiResponse(400, null, "franchiseId is required", false));
+  }
+
+  let restockList = [];
+  if (Array.isArray(items) && items.length > 0) {
+    restockList = items;
+  } else if (productId && quantity !== undefined) {
+    restockList = [{ productId, variantSku, sku, quantity, lowStockThreshold }];
+  } else {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "Either items array or productId and quantity are required", false));
   }
 
   try {
-    const updated = await FranchiseInventoryService.restock({
-      franchiseId,
-      productId,
-      variantSku,
-      sku,
-      quantity,
-      lowStockThreshold,
-      adminId: req.admin._id,
-    });
+    const StockChallanService = require("../../services/stockChallan/index");
+    const updatedItems = [];
+    const challanItems = [];
+
+    for (const item of restockList) {
+      const pId = item.productId || item.product;
+      const q = Number(item.quantity);
+      if (!pId || isNaN(q) || q <= 0) continue;
+
+      const updated = await FranchiseInventoryService.restock({
+        franchiseId,
+        productId: pId,
+        variantSku: item.variantSku || null,
+        sku: item.sku,
+        quantity: q,
+        lowStockThreshold: item.lowStockThreshold,
+        adminId: req.admin._id,
+      });
+
+      updatedItems.push(updated);
+      challanItems.push({
+        product: pId,
+        quantity: q,
+        sku: item.sku,
+      });
+    }
+
+    let challan = null;
+    if (challanItems.length > 0) {
+      challan = await StockChallanService.createChallanRecordOnly({
+        franchiseId,
+        items: challanItems,
+        notes: notes || "Auto-generated upon restock dispatch",
+        admin: req.admin,
+      });
+    }
 
     return res.status(200).json(
-      new ApiResponse(200, updated, "Outlet inventory restocked successfully", true)
+      new ApiResponse(
+        200,
+        {
+          items: updatedItems,
+          challan: challan
+            ? {
+                _id: challan._id,
+                challanNumber: challan.challanNumber,
+                totalQuantity: challan.totalQuantity,
+                dispatchDate: challan.dispatchDate,
+                items: challan.items,
+                notes: challan.notes,
+              }
+            : null,
+        },
+        challan
+          ? `Outlet restocked successfully. Stock Challan #${challan.challanNumber} generated automatically.`
+          : "Outlet inventory restocked successfully",
+        true
+      )
     );
   } catch (error) {
     return res.status(400).json(new ApiResponse(400, null, error.message, false));

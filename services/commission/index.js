@@ -146,17 +146,6 @@ class CommissionService {
         status: "accrued",
       });
 
-      // Post Net Online Settlement to Franchise Khata Book
-      try {
-        const FranchiseLedgerService = require("../franchiseLedger/index");
-        await FranchiseLedgerService.recordOnlineSaleSettlement({
-          order,
-          commissionResult: ledgerEntry,
-        });
-      } catch (khataErr) {
-        console.error("Khata Book online settlement posting error:", khataErr.message);
-      }
-
       return ledgerEntry;
     } catch (error) {
       if (error.code === 11000) {

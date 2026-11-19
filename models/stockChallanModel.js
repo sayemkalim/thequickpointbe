@@ -117,3 +117,4 @@ StockChallanSchema.statics.generateChallanNumber = async function () {
 const StockChallan = mongoose.model("StockChallan", StockChallanSchema);
 
 module.exports = StockChallan;
+

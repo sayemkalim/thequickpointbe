@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const FranchiseSettlement = require("../../models/franchiseSettlementModel");
 const StockChallan = require("../../models/stockChallanModel");
 const CounterBill = require("../../models/counterBillModel");
+const OutletStockLog = require("../../models/outletStockLogModel");
 const Order = require("../../models/orderModel");
 const Franchise = require("../../models/franchiseModel");
 const FranchiseInventory = require("../../models/franchiseInventoryModel");
@@ -42,10 +43,17 @@ class FranchiseSettlementService {
 
     const periodEnd = endDate ? new Date(endDate) : new Date();
 
-    // 1. Fetch un-settled Walk-in Counter Bills in this period
+    // 1. Fetch un-settled Walk-in Counter Bills & Offline Stock Sales in this period
     const walkInBills = await CounterBill.find({
       franchise: franchise._id,
       isSettled: false,
+      createdAt: { $gte: periodStart, $lte: periodEnd },
+    }).lean();
+
+    const offlineStockLogs = await OutletStockLog.find({
+      franchise: franchise._id,
+      type: "counter_sale",
+      is_settled: { $ne: true },
       createdAt: { $gte: periodStart, $lte: periodEnd },
     }).lean();
 
@@ -61,6 +69,15 @@ class FranchiseSettlementService {
         walkInTotalQuantity += qty;
         walkInProductQtyMap[pId] = (walkInProductQtyMap[pId] || 0) + qty;
       });
+    });
+
+    offlineStockLogs.forEach((log) => {
+      const amt = Number(log.total_amount || (log.quantity * (log.unit_price || 0)));
+      walkInGrossAmount += amt;
+      const pId = String(log.product?._id || log.product);
+      const qty = Number(log.quantity || 0);
+      walkInTotalQuantity += qty;
+      walkInProductQtyMap[pId] = (walkInProductQtyMap[pId] || 0) + qty;
     });
 
     // 2. Fetch Online Orders (Cashfree verified & completed) for this franchise
@@ -172,7 +189,7 @@ class FranchiseSettlementService {
       },
       onlineCollectedByCompany: Number(onlineGrossAmount.toFixed(2)),
       walkInSalesSummary: {
-        totalBills: walkInBills.length,
+        totalBills: walkInBills.length + offlineStockLogs.length,
         grossAmount: Number(walkInGrossAmount.toFixed(2)),
         totalQuantity: walkInTotalQuantity,
       },
@@ -181,6 +198,7 @@ class FranchiseSettlementService {
       commissionAmount,
       netPayable,
       includedBillIds: walkInBills.map((b) => b._id),
+      includedLogIds: offlineStockLogs.map((l) => l._id),
       includedOrderIds: onlineOrders.map((o) => o._id),
     };
   }
@@ -221,11 +239,18 @@ class FranchiseSettlementService {
 
     await settlement.save();
 
-    // Mark all included CounterBills as settled so they won't be double counted
+    // Mark all included CounterBills and Offline Stock Logs as settled so they won't be double counted
     if (preview.includedBillIds && preview.includedBillIds.length > 0) {
       await CounterBill.updateMany(
         { _id: { $in: preview.includedBillIds } },
         { $set: { isSettled: true, settlement: settlement._id } }
+      );
+    }
+
+    if (preview.includedLogIds && preview.includedLogIds.length > 0) {
+      await OutletStockLog.updateMany(
+        { _id: { $in: preview.includedLogIds } },
+        { $set: { is_settled: true, settlement: settlement._id } }
       );
     }
 
@@ -395,3 +420,4 @@ class FranchiseSettlementService {
 }
 
 module.exports = new FranchiseSettlementService();
+

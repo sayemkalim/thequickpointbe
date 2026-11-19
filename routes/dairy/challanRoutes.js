@@ -25,3 +25,4 @@ router.get("/:id", franchiseOrAdmin, getChallanDetails);
 router.post("/:id/cancel", centralAdmin, cancelChallan);
 
 module.exports = router;
+
