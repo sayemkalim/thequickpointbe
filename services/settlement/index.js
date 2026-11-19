@@ -41,7 +41,13 @@ class FranchiseSettlementService {
       }
     }
 
-    const periodEnd = endDate ? new Date(endDate) : new Date();
+    let periodEnd = new Date();
+    if (endDate) {
+      periodEnd = new Date(endDate);
+      if (typeof endDate === "string" && endDate.length === 10) {
+        periodEnd.setHours(23, 59, 59, 999);
+      }
+    }
 
     // 1. Fetch un-settled Walk-in Counter Bills & Offline Stock Sales in this period
     const walkInBills = await CounterBill.find({
@@ -50,12 +56,18 @@ class FranchiseSettlementService {
       createdAt: { $gte: periodStart, $lte: periodEnd },
     }).lean();
 
-    const offlineStockLogs = await OutletStockLog.find({
+    const rawOfflineStockLogs = await OutletStockLog.find({
       franchise: franchise._id,
       type: "counter_sale",
       is_settled: { $ne: true },
       createdAt: { $gte: periodStart, $lte: periodEnd },
     }).lean();
+
+    // Prevent double counting if both CounterBill and OutletStockLog exist for the same bill
+    const counterBillNumbers = new Set(walkInBills.map((b) => b.bill_number).filter(Boolean));
+    const offlineStockLogs = rawOfflineStockLogs.filter(
+      (log) => !log.bill_no || !counterBillNumbers.has(log.bill_no)
+    );
 
     let walkInGrossAmount = 0;
     let walkInTotalQuantity = 0;
