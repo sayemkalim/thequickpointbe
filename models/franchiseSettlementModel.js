@@ -71,6 +71,7 @@ const FranchiseSettlementSchema = new mongoose.Schema(
     stockSummary: [SettlementStockItemSchema],
     totalStockReceived: { type: Number, default: 0 },
     totalChallanAmount: { type: Number, default: 0 },
+    restAmount: { type: Number, default: 0 },
     totalOnlineSold: { type: Number, default: 0 },
     totalWalkInSold: { type: Number, default: 0 },
     totalRemainingStock: { type: Number, default: 0 },

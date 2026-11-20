@@ -185,12 +185,19 @@ class FranchiseSettlementService {
         : franchise.commissionOverride?.value || 10
     );
 
+    // Online sale is deducted directly from Challan Bill (Udhar):
+    // Challan Bill - Online Sale = Rest Amount
+    // Outlet owner pays Rest Amount after deducting their percentage (commission)
+    const restAmount = totalChallanAmount > 0
+      ? Number(Math.max(0, totalChallanAmount - onlineGrossAmount).toFixed(2))
+      : Number(walkInGrossAmount.toFixed(2));
+
     const commissionAmount = Number(
-      ((walkInGrossAmount * commissionPercentage) / 100).toFixed(2)
+      ((restAmount * commissionPercentage) / 100).toFixed(2)
     );
 
     const netPayable = Number(
-      Math.max(0, walkInGrossAmount - commissionAmount).toFixed(2)
+      Math.max(0, restAmount - commissionAmount).toFixed(2)
     );
 
     const totalSalesAmount = Number((onlineGrossAmount + walkInGrossAmount).toFixed(2));
@@ -215,6 +222,7 @@ class FranchiseSettlementService {
       stockSummary,
       totalStockReceived,
       totalChallanAmount: Number(totalChallanAmount.toFixed(2)),
+      restAmount,
       totalOnlineSold: onlineTotalQuantity,
       totalWalkInSold: walkInTotalQuantity,
       totalRemainingStock,
@@ -257,6 +265,7 @@ class FranchiseSettlementService {
       stockSummary: preview.stockSummary,
       totalStockReceived: preview.totalStockReceived,
       totalChallanAmount: preview.totalChallanAmount,
+      restAmount: preview.restAmount,
       totalOnlineSold: preview.totalOnlineSold,
       totalWalkInSold: preview.totalWalkInSold,
       totalRemainingStock: preview.totalRemainingStock,
