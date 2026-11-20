@@ -141,6 +141,8 @@ class FranchiseService {
       "radiusKm",
       "operatingHours",
       "ownerAdmin",
+      "commissionPercentage",
+      "commissionOverride",
     ];
 
     allowedFields.forEach((field) => {
@@ -148,6 +150,10 @@ class FranchiseService {
         franchise[field] = data[field];
       }
     });
+
+    if (data.commissionPercentage !== undefined) {
+      franchise.commissionPercentage = Math.max(0, Math.min(100, Number(data.commissionPercentage) || 0));
+    }
 
     if (data.isActive !== undefined) {
       franchise.status = data.isActive ? "active" : "inactive";
