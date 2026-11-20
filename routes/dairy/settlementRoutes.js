@@ -18,8 +18,8 @@ router.get("/preview", franchiseOrAdmin, scopeToFranchise, previewSettlement);
 router.post("/preview", franchiseOrAdmin, scopeToFranchise, previewSettlement);
 
 // Confirm and generate immutable settlement
-router.post("/confirm", centralAdmin, confirmSettlement);
-router.post("/", centralAdmin, confirmSettlement);
+router.post("/confirm", franchiseOrAdmin, scopeToFranchise, confirmSettlement);
+router.post("/", franchiseOrAdmin, scopeToFranchise, confirmSettlement);
 
 // List settlements
 router.get("/", franchiseOrAdmin, scopeToFranchise, getSettlements);
