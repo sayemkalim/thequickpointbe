@@ -29,3 +29,4 @@ router.get("/bills", franchiseOrAdmin, scopeToFranchise, getBills);
 router.post("/bills/:id/pay", centralAdmin, recordPayment);
 
 module.exports = router;
+

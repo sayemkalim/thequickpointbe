@@ -5,8 +5,45 @@ const Franchise = require("../../models/franchiseModel");
 const Product = require("../../models/productsModel");
 const Order = require("../../models/orderModel");
 const CounterBill = require("../../models/counterBillModel");
-const FranchiseInventory = require("../../models/franchiseInventoryModel");
-const OutletStockLog = require("../../models/outletStockLogModel");
+
+// Safe amount parser handling Decimal128, lean objects, strings, numbers
+const parseAmount = (val) => {
+  if (val == null) return 0;
+  if (typeof val === "number") return isNaN(val) ? 0 : val;
+  if (typeof val === "string") return parseFloat(val) || 0;
+  if (typeof val === "object") {
+    if (val.$numberDecimal) return parseFloat(val.$numberDecimal) || 0;
+    if (typeof val.toString === "function") {
+      const s = val.toString();
+      return parseFloat(s) || 0;
+    }
+  }
+  return 0;
+};
+
+// Safe helper to extract total amount from an Order
+const getOrderTotalAmount = (order) => {
+  if (!order) return 0;
+  const finalAmt = parseAmount(order.finalTotalAmount);
+  if (finalAmt > 0) return finalAmt;
+
+  const totAmt = parseAmount(order.totalAmount);
+  if (totAmt > 0) return totAmt;
+
+  const discAmt = parseAmount(order.discountedTotalAmount);
+  if (discAmt > 0) return discAmt;
+
+  if (Array.isArray(order.items)) {
+    return order.items.reduce((sum, it) => {
+      const itemAmt =
+        parseAmount(it.discounted_total_amount) ||
+        parseAmount(it.total_amount) ||
+        parseAmount(it.price) * (Number(it.quantity) || 1);
+      return sum + itemAmt;
+    }, 0);
+  }
+  return 0;
+};
 
 class OutletBillingService {
   /**
@@ -136,7 +173,7 @@ class OutletBillingService {
   /**
    * 3. Live Billing Calculation (Challan Udhar - Online Sales = Rest Amount - Commission % = Outlet Owner Dega)
    */
-  async getLiveCalculation({ franchiseId }) {
+  async getLiveCalculation({ franchiseId, startDate = null, endDate = null }) {
     if (!franchiseId || !mongoose.Types.ObjectId.isValid(franchiseId)) {
       throw new Error("Valid Franchise ID is required.");
     }
@@ -163,7 +200,7 @@ class OutletBillingService {
       .lean();
 
     const totalChallanAmount = activeChallans.reduce(
-      (sum, c) => sum + (Number(c.totalAmount) || 0),
+      (sum, c) => sum + (parseAmount(c.totalAmount) || 0),
       0
     );
     const totalChallanPieces = activeChallans.reduce(
@@ -171,35 +208,82 @@ class OutletBillingService {
       0
     );
 
-    // Find period start (date of first active challan, or start of current day if no active challans)
-    let periodStart = activeChallans.length > 0 ? new Date(activeChallans[0].dispatchDate) : null;
-    if (!periodStart) {
-      const now = new Date();
-      periodStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    }
-    const periodEnd = new Date();
+    // Determine period boundaries
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
-    // Online Sales during active period
-    const onlineOrders = await Order.find({
+    const lastSettlement = await OutletBillingSettlement.findOne({
       franchise: franchise._id,
+    })
+      .sort({ periodEnd: -1, createdAt: -1 })
+      .lean();
+
+    let periodStart;
+    if (startDate && !isNaN(new Date(startDate).getTime())) {
+      periodStart = new Date(startDate);
+      periodStart.setHours(0, 0, 0, 0);
+    } else if (lastSettlement && lastSettlement.periodEnd) {
+      periodStart = new Date(lastSettlement.periodEnd);
+    } else if (activeChallans.length > 0) {
+      const chDate = new Date(activeChallans[0].dispatchDate);
+      const chDayStart = new Date(chDate.getFullYear(), chDate.getMonth(), chDate.getDate(), 0, 0, 0, 0);
+      periodStart = chDayStart < todayStart ? chDayStart : todayStart;
+    } else {
+      periodStart = todayStart;
+    }
+
+    let periodEnd;
+    if (endDate && !isNaN(new Date(endDate).getTime())) {
+      periodEnd = new Date(endDate);
+      periodEnd.setHours(23, 59, 59, 999);
+    } else {
+      periodEnd = new Date();
+    }
+
+    // Online Sales Query
+    // Matches orders assigned to this franchise with Cashfree / prepaid / confirmed status
+    const orderQuery = {
+      $or: [
+        { franchise: franchise._id },
+        { franchise: new mongoose.Types.ObjectId(franchiseId) },
+        { franchise: String(franchise._id) },
+      ],
       createdAt: { $gte: periodStart, $lte: periodEnd },
-      paymentStatus: "completed",
-      status: { $nin: ["cancelled", "refunded"] },
-    }).lean();
+      status: { $nin: ["cancelled", "refunded", "failed"] },
+      paymentStatus: { $ne: "failed" },
+    };
+
+    const rawOnlineOrders = await Order.find(orderQuery)
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Filter to ensure only valid online orders (exclude unpaid COD)
+    const onlineOrders = rawOnlineOrders.filter((o) => {
+      if (o.paymentMode === "COD" && o.paymentStatus !== "paid") return false;
+      return true;
+    });
 
     const onlineSalesAmount = onlineOrders.reduce(
-      (sum, o) => sum + (Number(o.totalAmount) || 0),
+      (sum, o) => sum + getOrderTotalAmount(o),
       0
     );
 
     // Walk-in Counter Sales during active period
-    const walkInBills = await CounterBill.find({
-      franchise: franchise._id,
+    const walkInQuery = {
+      $or: [
+        { franchise: franchise._id },
+        { franchise: new mongoose.Types.ObjectId(franchiseId) },
+        { franchise: String(franchise._id) },
+      ],
       createdAt: { $gte: periodStart, $lte: periodEnd },
-    }).lean();
+    };
+
+    const walkInBills = await CounterBill.find(walkInQuery)
+      .sort({ createdAt: -1 })
+      .lean();
 
     const walkInSalesAmount = walkInBills.reduce(
-      (sum, b) => sum + (Number(b.grand_total) || 0),
+      (sum, b) => sum + (parseAmount(b.grand_total) || parseAmount(b.received_amount) || 0),
       0
     );
 
@@ -243,7 +327,7 @@ class OutletBillingService {
     // Accumulate Online Sold Qty
     for (const order of onlineOrders) {
       for (const item of order.items || []) {
-        const pId = String(item.product?._id || item.product);
+        const pId = String(item.product?._id || item.product || "");
         if (productMap[pId]) {
           productMap[pId].onlineSoldQty += Number(item.quantity) || 0;
         }
@@ -253,7 +337,7 @@ class OutletBillingService {
     // Accumulate Offline Sold Qty
     for (const bill of walkInBills) {
       for (const item of bill.items || []) {
-        const pId = String(item.product?._id || item.product);
+        const pId = String(item.product?._id || item.product || "");
         if (productMap[pId]) {
           productMap[pId].offlineSoldQty += Number(item.quantity) || 0;
         }
@@ -289,6 +373,15 @@ class OutletBillingService {
       totalChallanAmount: Number(totalChallanAmount.toFixed(2)),
       onlineSalesCount: onlineOrders.length,
       onlineSalesAmount: Number(onlineSalesAmount.toFixed(2)),
+      onlineOrdersList: onlineOrders.slice(0, 30).map((o) => ({
+        _id: o._id,
+        orderNumber: o.orderNumber,
+        amount: getOrderTotalAmount(o),
+        date: o.createdAt,
+        itemsCount: o.items?.length || 0,
+        paymentMode: o.paymentMode || "ONLINE",
+        status: o.status,
+      })),
       walkInBillsCount: walkInBills.length,
       walkInSalesAmount: Number(walkInSalesAmount.toFixed(2)),
       restAmount: Number(restAmount.toFixed(2)),
@@ -302,10 +395,10 @@ class OutletBillingService {
   /**
    * 4. 1-Click Generate Bill (Locks active challans into a permanent Bill Slip)
    */
-  async generateBill({ franchiseId, notes = "", admin = null }) {
-    const calc = await this.getLiveCalculation({ franchiseId });
+  async generateBill({ franchiseId, startDate = null, endDate = null, notes = "", admin = null }) {
+    const calc = await this.getLiveCalculation({ franchiseId, startDate, endDate });
 
-    if (calc.totalChallanAmount <= 0 && calc.walkInSalesAmount <= 0) {
+    if (calc.totalChallanAmount <= 0 && calc.walkInSalesAmount <= 0 && calc.onlineSalesAmount <= 0) {
       throw new Error("No active stock challan or sales found to generate a bill.");
     }
 

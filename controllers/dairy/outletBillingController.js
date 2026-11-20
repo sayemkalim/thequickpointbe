@@ -26,6 +26,7 @@ const getChallans = asyncHandler(async (req, res) => {
  */
 const getLiveCalculation = asyncHandler(async (req, res) => {
   const franchiseId = req.scopedFranchiseId || req.query.franchiseId;
+  const { startDate, endDate } = req.query;
 
   if (!franchiseId || franchiseId === "all") {
     return res.status(400).json(
@@ -33,7 +34,11 @@ const getLiveCalculation = asyncHandler(async (req, res) => {
     );
   }
 
-  const result = await OutletBillingService.getLiveCalculation({ franchiseId });
+  const result = await OutletBillingService.getLiveCalculation({
+    franchiseId,
+    startDate,
+    endDate,
+  });
 
   return res.status(200).json(
     new ApiResponse(200, result, "Live billing calculation calculated successfully.", true)
@@ -45,7 +50,7 @@ const getLiveCalculation = asyncHandler(async (req, res) => {
  */
 const generateBill = asyncHandler(async (req, res) => {
   const franchiseId = req.scopedFranchiseId || req.body.franchiseId;
-  const { notes } = req.body;
+  const { startDate, endDate, notes } = req.body;
 
   if (!franchiseId || franchiseId === "all") {
     return res.status(400).json(
@@ -55,6 +60,8 @@ const generateBill = asyncHandler(async (req, res) => {
 
   const bill = await OutletBillingService.generateBill({
     franchiseId,
+    startDate,
+    endDate,
     notes,
     admin: req.admin,
   });
@@ -110,3 +117,4 @@ module.exports = {
   getBills,
   recordPayment,
 };
+

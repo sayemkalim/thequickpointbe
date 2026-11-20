@@ -143,3 +143,4 @@ const OutletBillingSettlement = mongoose.model(
 );
 
 module.exports = OutletBillingSettlement;
+

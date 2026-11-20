@@ -119,3 +119,4 @@ test("QuickPoint Simple Outlet Billing & Challan Model Suite", async (t) => {
     assert.equal(bill.paymentStatus, "paid");
   });
 });
+

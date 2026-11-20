@@ -131,3 +131,4 @@ OutletChallanSchema.statics.generateChallanNumber = async function () {
 const OutletChallan = mongoose.model("OutletChallan", OutletChallanSchema);
 
 module.exports = OutletChallan;
+
