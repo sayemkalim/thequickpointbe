@@ -579,8 +579,8 @@ class OutletBillingService {
   async generateBill({ franchiseId, startDate = null, endDate = null, challanId = null, notes = "", admin = null }) {
     const calc = await this.getLiveCalculation({ franchiseId, startDate, endDate, challanId });
 
-    if (calc.totalChallanAmount <= 0 && calc.walkInSalesAmount <= 0 && calc.onlineSalesAmount <= 0) {
-      throw new Error("No active stock challan or sales found to generate a bill.");
+    if (calc.totalChallanAmount <= 0 || !calc.activeChallans || calc.activeChallans.length === 0) {
+      throw new Error("Cannot generate settlement bill without an active restock challan. Please restock items from Central Warehouse first.");
     }
 
     const billNumber = await OutletBillingSettlement.generateBillNumber();
