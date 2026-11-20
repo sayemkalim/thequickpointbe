@@ -360,17 +360,25 @@ class OutletBillingService {
     const walkInSalesAmount = offlineOrdersList.reduce((sum, it) => sum + it.amount, 0);
     const walkInBillsCount = offlineOrdersList.length;
 
-    // 5-Step Exact Billing Formula
-    // 1. Total Challan Udhar
-    // 2. Online Sales (Cashfree) is deducted 100% from Challan Bill
+    // 5-Step Exact Billing Formula:
+    // 1. Total Challan Udhar (Stock dispatched to store)
+    // 2. Online Sales (Cashfree) deducted 100% (company already received this from customers)
     const restAmount = totalChallanAmount > 0
       ? Math.max(0, totalChallanAmount - onlineSalesAmount)
       : walkInSalesAmount;
 
-    // 4. Franchise Commission
-    const commissionAmount = Number(((restAmount * commissionPercentage) / 100).toFixed(2));
+    // 3. Franchise Commission / Margin:
+    // Store gets commission on Online Sales (store packed/delivered the order):
+    const onlineCommission = Number(((onlineSalesAmount * commissionPercentage) / 100).toFixed(2));
+    // Store gets margin on the remaining / offline stock:
+    const restCommission = totalChallanAmount > 0
+      ? Number(((restAmount * commissionPercentage) / 100).toFixed(2))
+      : Number(((walkInSalesAmount * commissionPercentage) / 100).toFixed(2));
+    // Total commission credited to franchise:
+    const commissionAmount = Number((onlineCommission + restCommission).toFixed(2));
 
-    // 5. Final Net Payable (Outlet Owner Dega)
+    // 4. Final Net Payable (Outlet Owner Dega to Company)
+    // Outlet owner owes restAmount minus total commission (including online sales commission credit):
     const netPayable = Number(Math.max(0, restAmount - commissionAmount).toFixed(2));
 
     // Itemized Product Movement (Dispatched - Online Sold - Offline Sold = Remaining)
@@ -495,6 +503,8 @@ class OutletBillingService {
       totalSalesAmount: Number((onlineSalesAmount + walkInSalesAmount).toFixed(2)),
       restAmount: Number(restAmount.toFixed(2)),
       commissionPercentage,
+      onlineCommissionAmount: Number(onlineCommission.toFixed(2)),
+      restCommissionAmount: Number(restCommission.toFixed(2)),
       commissionAmount,
       netPayable,
       productBreakdown,
