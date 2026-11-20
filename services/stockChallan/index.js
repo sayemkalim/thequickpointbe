@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const StockChallan = require("../../models/stockChallanModel");
 const Franchise = require("../../models/franchiseModel");
 const Product = require("../../models/productsModel");
+const Admin = require("../../models/adminModel");
 const FranchiseInventory = require("../../models/franchiseInventoryModel");
 const OutletStockLog = require("../../models/outletStockLogModel");
 
@@ -71,25 +72,11 @@ class StockChallanService {
       createdBy: admin?._id || null,
     });
 
-        let saved = false;
-    let attempts = 0;
-    while (!saved && attempts < 5) {
-      try {
-            let saved = false;
+    let saved = false;
     let attempts = 0;
     while (!saved && attempts < 5) {
       try {
         await challan.save();
-        saved = true;
-      } catch (saveErr) {
-        if (saveErr.code === 11000 || saveErr.message?.includes("E11000")) {
-          attempts++;
-          challan.challanNumber = await StockChallan.generateChallanNumber();
-        } else {
-          throw saveErr;
-        }
-      }
-    }
         saved = true;
       } catch (saveErr) {
         if (saveErr.code === 11000 || saveErr.message?.includes("E11000")) {
@@ -345,7 +332,21 @@ class StockChallanService {
       createdBy: admin?._id || null,
     });
 
-    await challan.save();
+    let saved = false;
+    let attempts = 0;
+    while (!saved && attempts < 5) {
+      try {
+        await challan.save();
+        saved = true;
+      } catch (saveErr) {
+        if (saveErr.code === 11000 || saveErr.message?.includes("E11000")) {
+          attempts++;
+          challan.challanNumber = await StockChallan.generateChallanNumber();
+        } else {
+          throw saveErr;
+        }
+      }
+    }
     return challan;
   }
 }
