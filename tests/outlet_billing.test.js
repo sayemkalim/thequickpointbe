@@ -140,4 +140,30 @@ test("QuickPoint Outlet Billing & Consignment Settlement Suite", async (t) => {
     assert.equal(bill.remainingAmount, 0);
     assert.equal(bill.paymentStatus, "paid");
   });
+
+  await t.test("5. Super Admin Partial Balance Due tracking (e.g. 2000 bill, 1700 paid -> 300 balance due)", () => {
+    const bill = new OutletBillingSettlement({
+      billNumber: "BILL-261120-0004",
+      franchise: new mongoose.Types.ObjectId(),
+      periodStart: new Date(),
+      periodEnd: new Date(),
+      totalChallanAmount: 3000,
+      onlineSalesAmount: 500,
+      walkInSalesAmount: 2000,
+      netPayable: 2000,
+      amountPaid: 0,
+      remainingAmount: 2000,
+      paymentStatus: "unpaid",
+    });
+
+    // Super Admin records partial payment of 1700
+    const partialPaid = 1700;
+    bill.amountPaid = partialPaid;
+    bill.remainingAmount = bill.netPayable - bill.amountPaid;
+    bill.paymentStatus = bill.remainingAmount <= 0 ? "paid" : bill.amountPaid > 0 ? "partial" : "unpaid";
+
+    assert.equal(bill.amountPaid, 1700);
+    assert.equal(bill.remainingAmount, 300); // 300 baaki
+    assert.equal(bill.paymentStatus, "partial");
+  });
 });

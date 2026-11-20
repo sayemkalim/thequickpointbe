@@ -6,6 +6,7 @@ const {
   generateBill,
   getBills,
   recordPayment,
+  updateBillStatus,
 } = require("../../controllers/dairy/outletBillingController");
 const {
   centralAdmin,
@@ -27,6 +28,9 @@ router.get("/bills", franchiseOrAdmin, scopeToFranchise, getBills);
 
 // Record Payment against a Bill
 router.post("/bills/:id/pay", centralAdmin, recordPayment);
+
+// Super Admin Update Payment Status (Mark Paid / Unpaid / Partial Outstanding Due)
+router.patch("/bills/:id/status", centralAdmin, updateBillStatus);
 
 module.exports = router;
 

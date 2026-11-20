@@ -26,7 +26,7 @@ const getChallans = asyncHandler(async (req, res) => {
  */
 const getLiveCalculation = asyncHandler(async (req, res) => {
   const franchiseId = req.scopedFranchiseId || req.query.franchiseId;
-  const { startDate, endDate, challanId } = req.query;
+  const { startDate, endDate, challanId, manualOfflineSalesAmount } = req.query;
 
   if (!franchiseId || franchiseId === "all") {
     return res.status(400).json(
@@ -39,6 +39,7 @@ const getLiveCalculation = asyncHandler(async (req, res) => {
     startDate,
     endDate,
     challanId,
+    manualOfflineSalesAmount,
   });
 
   return res.status(200).json(
@@ -51,7 +52,7 @@ const getLiveCalculation = asyncHandler(async (req, res) => {
  */
 const generateBill = asyncHandler(async (req, res) => {
   const franchiseId = req.scopedFranchiseId || req.body.franchiseId;
-  const { startDate, endDate, notes, challanId } = req.body;
+  const { startDate, endDate, notes, challanId, manualOfflineSalesAmount } = req.body;
 
   if (!franchiseId || franchiseId === "all") {
     return res.status(400).json(
@@ -66,6 +67,7 @@ const generateBill = asyncHandler(async (req, res) => {
     challanId,
     notes,
     admin: req.admin,
+    manualOfflineSalesAmount,
   });
 
   return res.status(201).json(
@@ -112,11 +114,36 @@ const recordPayment = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * Update Bill Payment Status & Outstanding Balance (Admin Mark Paid / Unpaid / Partial)
+ */
+const updateBillStatus = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { status, amountPaid } = req.body;
+
+  const bill = await OutletBillingService.updateBillStatus({
+    billId: id,
+    status,
+    amountPaid,
+    admin: req.admin,
+  });
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      bill,
+      `Bill #${bill.billNumber} status updated to ${bill.paymentStatus.toUpperCase()} (Paid: ₹${bill.amountPaid}, Due: ₹${bill.remainingAmount}).`,
+      true
+    )
+  );
+});
+
 module.exports = {
   getChallans,
   getLiveCalculation,
   generateBill,
   getBills,
   recordPayment,
+  updateBillStatus,
 };
 

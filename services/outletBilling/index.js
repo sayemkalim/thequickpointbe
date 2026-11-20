@@ -174,7 +174,7 @@ class OutletBillingService {
   /**
    * 3. Live Billing Calculation (Challan Udhar - Online Sales = Rest Amount - Commission % = Outlet Owner Dega)
    */
-  async getLiveCalculation({ franchiseId, startDate = null, endDate = null, challanId = null }) {
+  async getLiveCalculation({ franchiseId, startDate = null, endDate = null, challanId = null, manualOfflineSalesAmount = null }) {
     if (!franchiseId || !mongoose.Types.ObjectId.isValid(franchiseId)) {
       throw new Error("Valid Franchise ID is required.");
     }
@@ -368,9 +368,13 @@ class OutletBillingService {
 
     offlineOrdersList.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    const walkInSalesAmount = Number(
+    const detectedWalkInSales = Number(
       offlineOrdersList.reduce((sum, it) => sum + it.amount, 0).toFixed(2)
     );
+    const manualOffline = manualOfflineSalesAmount !== null && manualOfflineSalesAmount !== undefined && !isNaN(Number(manualOfflineSalesAmount))
+      ? Number(Number(manualOfflineSalesAmount).toFixed(2))
+      : null;
+    const walkInSalesAmount = manualOffline !== null ? manualOffline : detectedWalkInSales;
     const walkInBillsCount = offlineOrdersList.length;
 
     // Itemized Product Movement (Dispatched - Online Sold - Offline Sold = Remaining)
@@ -554,6 +558,8 @@ class OutletBillingService {
       })),
       walkInBillsCount,
       walkInSalesAmount: Number(walkInSalesAmount.toFixed(2)),
+      detectedWalkInSales: Number(detectedWalkInSales.toFixed(2)),
+      isManualOffline: manualOffline !== null,
       offlineSalesCount: walkInBillsCount,
       offlineSalesAmount: Number(walkInSalesAmount.toFixed(2)),
       offlineOrdersList: offlineOrdersList.slice(0, 50),
@@ -576,8 +582,8 @@ class OutletBillingService {
   /**
    * 4. 1-Click Generate Bill (Locks active challans & sales into a permanent Bill Slip)
    */
-  async generateBill({ franchiseId, startDate = null, endDate = null, challanId = null, notes = "", admin = null }) {
-    const calc = await this.getLiveCalculation({ franchiseId, startDate, endDate, challanId });
+  async generateBill({ franchiseId, startDate = null, endDate = null, challanId = null, notes = "", admin = null, manualOfflineSalesAmount = null }) {
+    const calc = await this.getLiveCalculation({ franchiseId, startDate, endDate, challanId, manualOfflineSalesAmount });
 
     if (calc.totalChallanAmount <= 0 || !calc.activeChallans || calc.activeChallans.length === 0) {
       throw new Error("Cannot generate settlement bill without an active restock challan. Please restock items from Central Warehouse first.");
@@ -726,6 +732,60 @@ class OutletBillingService {
       bill.paymentStatus = "paid";
     } else {
       bill.paymentStatus = "partial";
+    }
+
+    await bill.save();
+
+    return await OutletBillingSettlement.findById(billId)
+      .populate("franchise", "name code outletCode phone address")
+      .populate("createdBy", "name email")
+      .lean();
+  }
+
+  /**
+   * 7. Update Bill Payment Status & Outstanding Balance (Admin Mark Paid / Unpaid / Partial)
+   */
+  async updateBillStatus({ billId, status, amountPaid = null, admin = null }) {
+    const bill = await OutletBillingSettlement.findById(billId);
+    if (!bill) {
+      throw new Error("Settlement bill not found.");
+    }
+
+    if (status === "paid") {
+      bill.paymentStatus = "paid";
+      bill.amountPaid = bill.netPayable;
+      bill.remainingAmount = 0;
+      bill.payments.push({
+        amount: bill.netPayable,
+        paymentMethod: "cash",
+        reference: "Marked Full Paid by Super Admin",
+        date: new Date(),
+        notes: "Full settlement marked paid",
+        recordedBy: admin?._id || null,
+      });
+    } else if (status === "unpaid") {
+      bill.paymentStatus = "unpaid";
+      bill.amountPaid = 0;
+      bill.remainingAmount = bill.netPayable;
+      bill.payments = [];
+    } else if (status === "partial" && amountPaid != null) {
+      const paid = Number(amountPaid);
+      if (isNaN(paid) || paid < 0) {
+        throw new Error("Invalid payment amount.");
+      }
+      bill.amountPaid = Number(Math.min(bill.netPayable, paid).toFixed(2));
+      bill.remainingAmount = Number(Math.max(0, bill.netPayable - bill.amountPaid).toFixed(2));
+      bill.paymentStatus = bill.remainingAmount <= 0 ? "paid" : bill.amountPaid > 0 ? "partial" : "unpaid";
+      bill.payments.push({
+        amount: paid,
+        paymentMethod: "cash",
+        reference: "Adjusted by Super Admin",
+        date: new Date(),
+        notes: `Partial settlement: paid ₹${bill.amountPaid}, balance due ₹${bill.remainingAmount}`,
+        recordedBy: admin?._id || null,
+      });
+    } else {
+      throw new Error("Invalid payment status. Must be 'paid', 'unpaid', or 'partial'.");
     }
 
     await bill.save();
