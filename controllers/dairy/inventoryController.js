@@ -62,9 +62,7 @@ const restockItem = asyncHandler(async (req, res) => {
   }
 
   try {
-    const StockChallanService = require("../../services/stockChallan/index");
     const updatedItems = [];
-    const challanItems = [];
 
     for (const item of restockList) {
       const pId = item.productId || item.product;
@@ -82,21 +80,6 @@ const restockItem = asyncHandler(async (req, res) => {
       });
 
       updatedItems.push(updated);
-      challanItems.push({
-        product: pId,
-        quantity: q,
-        sku: item.sku,
-      });
-    }
-
-    let challan = null;
-    if (challanItems.length > 0) {
-      challan = await StockChallanService.createChallanRecordOnly({
-        franchiseId,
-        items: challanItems,
-        notes: notes || "Auto-generated upon restock dispatch",
-        admin: req.admin,
-      });
     }
 
     return res.status(200).json(
@@ -104,20 +87,8 @@ const restockItem = asyncHandler(async (req, res) => {
         200,
         {
           items: updatedItems,
-          challan: challan
-            ? {
-                _id: challan._id,
-                challanNumber: challan.challanNumber,
-                totalQuantity: challan.totalQuantity,
-                dispatchDate: challan.dispatchDate,
-                items: challan.items,
-                notes: challan.notes,
-              }
-            : null,
         },
-        challan
-          ? `Outlet restocked successfully. Stock Challan #${challan.challanNumber} generated automatically.`
-          : "Outlet inventory restocked successfully",
+        "Outlet inventory restocked successfully",
         true
       )
     );

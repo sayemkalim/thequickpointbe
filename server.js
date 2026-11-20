@@ -37,8 +37,6 @@ const dairyInventoryRoutes = require("./routes/dairy/inventoryRoutes.js");
 const dairyOrderRoutes = require("./routes/dairy/orderRoutes.js");
 const dairySettingsRoutes = require("./routes/dairy/settingsRoutes.js");
 const dairyPosRoutes = require("./routes/dairy/posRoutes.js");
-const dairyChallanRoutes = require("./routes/dairy/challanRoutes.js");
-const dairySettlementRoutes = require("./routes/dairy/settlementRoutes.js");
 
 // Connect DB
 connectDB();
@@ -96,8 +94,6 @@ app.use("/api/dairy/inventory", dairyInventoryRoutes);
 app.use("/api/dairy/orders", dairyOrderRoutes);
 app.use("/api/dairy/settings", dairySettingsRoutes);
 app.use("/api/dairy/pos", dairyPosRoutes);
-app.use("/api/dairy/challans", dairyChallanRoutes);
-app.use("/api/dairy/settlements", dairySettlementRoutes);
 
 app.use("/api-doc", swaggerUI.serve, swaggerUI.setup(swaggerSpec));
 

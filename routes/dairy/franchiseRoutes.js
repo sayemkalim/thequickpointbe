@@ -10,11 +10,9 @@ const {
   deleteFranchise,
   regenerateQrCode,
   updateOutletLocation,
-} = require("../../controllers/dairy/franchiseController");
-const {
   getFranchiseSalesSummary,
   getFranchiseStockSummary,
-} = require("../../controllers/dairy/settlementController");
+} = require("../../controllers/dairy/franchiseController");
 const { centralAdmin, franchiseOrAdmin } = require("../../middleware/auth/adminMiddleware");
 
 // Public endpoints

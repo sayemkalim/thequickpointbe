@@ -180,6 +180,88 @@ const updateOutletLocation = asyncHandler(async (req, res) => {
   }
 });
 
+/**
+ * Get sales summary for Franchise Details view
+ */
+const getFranchiseSalesSummary = asyncHandler(async (req, res) => {
+  const mongoose = require("mongoose");
+  const CounterBill = require("../../models/counterBillModel");
+  const Order = require("../../models/orderModel");
+
+  const franchiseId = req.scopedFranchiseId || req.params.id;
+  const { startDate, endDate } = req.query;
+
+  const matchTime = {};
+  if (startDate) matchTime.$gte = new Date(startDate);
+  if (endDate) {
+    const eDate = new Date(endDate);
+    eDate.setHours(23, 59, 59, 999);
+    matchTime.$lte = eDate;
+  }
+
+  const billMatch = { franchise: new mongoose.Types.ObjectId(franchiseId) };
+  const orderMatch = {
+    franchise: new mongoose.Types.ObjectId(franchiseId),
+    paymentStatus: "completed",
+    status: { $nin: ["cancelled", "refunded"] },
+  };
+
+  if (Object.keys(matchTime).length > 0) {
+    billMatch.createdAt = matchTime;
+    orderMatch.createdAt = matchTime;
+  }
+
+  const [walkInBills, onlineOrders] = await Promise.all([
+    CounterBill.find(billMatch).lean(),
+    Order.find(orderMatch).lean(),
+  ]);
+
+  const walkInSalesAmount = walkInBills.reduce((sum, b) => sum + (Number(b.grand_total) || 0), 0);
+  const onlineSalesAmount = onlineOrders.reduce((sum, o) => sum + (Number(o.totalAmount) || 0), 0);
+
+  const summary = {
+    walkInSales: {
+      totalBills: walkInBills.length,
+      totalAmount: Number(walkInSalesAmount.toFixed(2)),
+    },
+    onlineSales: {
+      totalOrders: onlineOrders.length,
+      totalAmount: Number(onlineSalesAmount.toFixed(2)),
+    },
+    totalSalesAmount: Number((walkInSalesAmount + onlineSalesAmount).toFixed(2)),
+  };
+
+  return res.status(200).json(
+    new ApiResponse(200, summary, "Franchise sales summary fetched successfully.", true)
+  );
+});
+
+/**
+ * Stock summary for Franchise Details view
+ */
+const getFranchiseStockSummary = asyncHandler(async (req, res) => {
+  const FranchiseInventory = require("../../models/franchiseInventoryModel");
+  const franchiseId = req.scopedFranchiseId || req.params.id;
+
+  const inventory = await FranchiseInventory.find({ franchise: franchiseId })
+    .populate("product", "name sku unit price image images")
+    .lean();
+
+  const totalStock = inventory.reduce((sum, i) => sum + (Number(i.quantity_on_hand) || 0), 0);
+  const lowStockItems = inventory.filter((i) => (i.quantity_on_hand || 0) <= (i.low_stock_threshold || 10));
+
+  const summary = {
+    totalItems: inventory.length,
+    totalStockPieces: totalStock,
+    lowStockCount: lowStockItems.length,
+    items: inventory,
+  };
+
+  return res.status(200).json(
+    new ApiResponse(200, summary, "Franchise stock summary fetched successfully.", true)
+  );
+});
+
 module.exports = {
   getNearbyOutlets,
   scanOutletQr,
@@ -190,4 +272,6 @@ module.exports = {
   deleteFranchise,
   regenerateQrCode,
   updateOutletLocation,
+  getFranchiseSalesSummary,
+  getFranchiseStockSummary,
 };
