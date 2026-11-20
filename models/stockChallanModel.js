@@ -126,7 +126,14 @@ StockChallanSchema.statics.generateChallanNumber = async function () {
     const num = parseInt(parts[parts.length - 1], 10);
     if (!isNaN(num)) nextSeq = num + 1;
   }
-  return `${prefix}${String(nextSeq).padStart(4, "0")}`;
+
+  let candidate = `${prefix}${String(nextSeq).padStart(4, "0")}`;
+  // Ensure uniqueness in case of race condition
+  while (await this.exists({ challanNumber: candidate })) {
+    nextSeq++;
+    candidate = `${prefix}${String(nextSeq).padStart(4, "0")}`;
+  }
+  return candidate;
 };
 
 const StockChallan = mongoose.model("StockChallan", StockChallanSchema);

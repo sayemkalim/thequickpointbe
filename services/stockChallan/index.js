@@ -71,7 +71,35 @@ class StockChallanService {
       createdBy: admin?._id || null,
     });
 
-    await challan.save();
+        let saved = false;
+    let attempts = 0;
+    while (!saved && attempts < 5) {
+      try {
+            let saved = false;
+    let attempts = 0;
+    while (!saved && attempts < 5) {
+      try {
+        await challan.save();
+        saved = true;
+      } catch (saveErr) {
+        if (saveErr.code === 11000 || saveErr.message?.includes("E11000")) {
+          attempts++;
+          challan.challanNumber = await StockChallan.generateChallanNumber();
+        } else {
+          throw saveErr;
+        }
+      }
+    }
+        saved = true;
+      } catch (saveErr) {
+        if (saveErr.code === 11000 || saveErr.message?.includes("E11000")) {
+          attempts++;
+          challan.challanNumber = await StockChallan.generateChallanNumber();
+        } else {
+          throw saveErr;
+        }
+      }
+    }
 
     // Atomically restock FranchiseInventory for each product
     for (const item of processedItems) {
