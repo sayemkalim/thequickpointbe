@@ -62,7 +62,9 @@ const restockItem = asyncHandler(async (req, res) => {
   }
 
   try {
+    const OutletBillingService = require("../../services/outletBilling/index");
     const updatedItems = [];
+    const challanItems = [];
 
     for (const item of restockList) {
       const pId = item.productId || item.product;
@@ -80,6 +82,26 @@ const restockItem = asyncHandler(async (req, res) => {
       });
 
       updatedItems.push(updated);
+      challanItems.push({
+        product: pId,
+        quantity: q,
+        sku: item.sku,
+        price: item.price,
+      });
+    }
+
+    let challan = null;
+    if (challanItems.length > 0) {
+      try {
+        challan = await OutletBillingService.createChallan({
+          franchiseId,
+          items: challanItems,
+          notes: notes || "Restock dispatch consignment credit",
+          admin: req.admin,
+        });
+      } catch (chErr) {
+        console.error("Auto challan creation error:", chErr.message);
+      }
     }
 
     return res.status(200).json(
@@ -87,8 +109,11 @@ const restockItem = asyncHandler(async (req, res) => {
         200,
         {
           items: updatedItems,
+          challan,
         },
-        "Outlet inventory restocked successfully",
+        challan
+          ? `Outlet restocked successfully. Stock Challan #${challan.challanNumber} issued.`
+          : "Outlet inventory restocked successfully",
         true
       )
     );
