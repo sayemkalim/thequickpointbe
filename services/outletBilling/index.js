@@ -542,6 +542,7 @@ class OutletBillingService {
         totalQuantity: c.totalQuantity,
         totalAmount: c.totalAmount,
         itemsCount: c.items?.length || 0,
+        items: c.items || [],
       })),
       totalChallanPieces,
       totalChallanAmount: Number(totalChallanAmount.toFixed(2)),
