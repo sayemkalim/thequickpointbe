@@ -590,6 +590,11 @@ class OutletBillingService {
       throw new Error("Cannot generate settlement bill without an active restock challan. Please restock items from Central Warehouse first.");
     }
 
+    const totalSold = (calc.onlineSalesAmount || 0) + (calc.walkInSalesAmount || 0);
+    if (totalSold <= 0) {
+      throw new Error("Cannot generate settlement bill: No sales recorded. Please enter offline sales or fulfill online orders before settling.");
+    }
+
     const billNumber = await OutletBillingSettlement.generateBillNumber();
 
     const bill = new OutletBillingSettlement({
@@ -643,24 +648,13 @@ class OutletBillingService {
       }
     }
 
-    // Check if any challans are completely sold out (remainingQty === 0)
-    const hasRemainingStock = (calc.productBreakdown || []).some((p) => p.remainingQty > 0);
+    // Mark the settled challans as settled so they cannot be billed again
     const challanIds = calc.activeChallans.map((c) => c._id);
-
     if (challanIds.length > 0) {
-      if (!hasRemainingStock) {
-        // All items sold out: mark challans settled
-        await OutletChallan.updateMany(
-          { _id: { $in: challanIds } },
-          { status: "settled", settlementId: bill._id }
-        );
-      } else {
-        // Stock remaining on shelf: link latest settlement ID but keep status active
-        await OutletChallan.updateMany(
-          { _id: { $in: challanIds } },
-          { settlementId: bill._id }
-        );
-      }
+      await OutletChallan.updateMany(
+        { _id: { $in: challanIds } },
+        { status: "settled", settlementId: bill._id }
+      );
     }
 
     return await OutletBillingSettlement.findById(bill._id)
@@ -795,6 +789,52 @@ class OutletBillingService {
       .populate("franchise", "name code outletCode phone address")
       .populate("createdBy", "name email")
       .lean();
+  }
+
+  /**
+   * 8. Delete a specific Settlement Bill (Super Admin Cleanup)
+   */
+  async deleteBill({ billId, admin = null }) {
+    const bill = await OutletBillingSettlement.findById(billId);
+    if (!bill) {
+      throw new Error("Settlement bill not found.");
+    }
+
+    // If bill had linked challans, revert them back to active so they can be re-settled or re-stocked
+    if (Array.isArray(bill.challans) && bill.challans.length > 0) {
+      const challanIds = bill.challans.map((c) => c.challanId).filter(Boolean);
+      if (challanIds.length > 0) {
+        await OutletChallan.updateMany(
+          { _id: { $in: challanIds } },
+          { status: "active", settlementId: null }
+        );
+      }
+    }
+
+    await OutletBillingSettlement.findByIdAndDelete(billId);
+    return { success: true, message: `Bill #${bill.billNumber} deleted successfully.` };
+  }
+
+  /**
+   * 9. Reset All Past Billing & Challan Data (Clean Slate)
+   */
+  async resetAllData({ franchiseId = null, admin = null }) {
+    const filter = {};
+    if (franchiseId && franchiseId !== "all" && mongoose.Types.ObjectId.isValid(franchiseId)) {
+      filter.franchise = franchiseId;
+    }
+
+    const [deletedBills, deletedChallans] = await Promise.all([
+      OutletBillingSettlement.deleteMany(filter),
+      OutletChallan.deleteMany(filter),
+    ]);
+
+    return {
+      success: true,
+      deletedBillsCount: deletedBills.deletedCount,
+      deletedChallansCount: deletedChallans.deletedCount,
+      message: `Cleaned slate: ${deletedBills.deletedCount} bills and ${deletedChallans.deletedCount} challans removed.`,
+    };
   }
 }
 

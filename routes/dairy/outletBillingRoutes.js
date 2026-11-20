@@ -7,6 +7,8 @@ const {
   getBills,
   recordPayment,
   updateBillStatus,
+  deleteBill,
+  resetData,
 } = require("../../controllers/dairy/outletBillingController");
 const {
   centralAdmin,
@@ -31,6 +33,13 @@ router.post("/bills/:id/pay", centralAdmin, recordPayment);
 
 // Super Admin Update Payment Status (Mark Paid / Unpaid / Partial Outstanding Due)
 router.patch("/bills/:id/status", centralAdmin, updateBillStatus);
+
+// Super Admin Delete Bill (Cleanup past wrong bill)
+router.delete("/bills/:id", centralAdmin, deleteBill);
+
+// Super Admin Reset All Past Billing & Challan Data
+router.post("/reset-data", centralAdmin, resetData);
+router.delete("/reset-data", centralAdmin, resetData);
 
 module.exports = router;
 

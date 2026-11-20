@@ -138,6 +138,38 @@ const updateBillStatus = asyncHandler(async (req, res) => {
   );
 });
 
+/**
+ * Delete a specific settlement bill (Super Admin cleanup)
+ */
+const deleteBill = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  const result = await OutletBillingService.deleteBill({
+    billId: id,
+    admin: req.admin,
+  });
+
+  return res.status(200).json(
+    new ApiResponse(200, result, result.message, true)
+  );
+});
+
+/**
+ * Reset all past test billing & challan data (Clean Slate)
+ */
+const resetData = asyncHandler(async (req, res) => {
+  const franchiseId = req.query.franchiseId || req.body.franchiseId;
+
+  const result = await OutletBillingService.resetAllData({
+    franchiseId,
+    admin: req.admin,
+  });
+
+  return res.status(200).json(
+    new ApiResponse(200, result, result.message, true)
+  );
+});
+
 module.exports = {
   getChallans,
   getLiveCalculation,
@@ -145,5 +177,7 @@ module.exports = {
   getBills,
   recordPayment,
   updateBillStatus,
+  deleteBill,
+  resetData,
 };
 
