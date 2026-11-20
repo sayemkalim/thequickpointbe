@@ -174,7 +174,7 @@ class OutletBillingService {
   /**
    * 3. Live Billing Calculation (Challan Udhar - Online Sales = Rest Amount - Commission % = Outlet Owner Dega)
    */
-  async getLiveCalculation({ franchiseId, startDate = null, endDate = null }) {
+  async getLiveCalculation({ franchiseId, startDate = null, endDate = null, challanId = null }) {
     if (!franchiseId || !mongoose.Types.ObjectId.isValid(franchiseId)) {
       throw new Error("Valid Franchise ID is required.");
     }
@@ -192,18 +192,19 @@ class OutletBillingService {
         : 10
     );
 
-    // Active (unsettled) challans
-    const activeChallans = await OutletChallan.find({
+    // Filter challans: either a specific challan or all active consignment challans
+    const challanQuery = {
       franchise: franchise._id,
-      status: "active",
-    })
+      status: { $in: ["active", "partial"] },
+    };
+    if (challanId && challanId !== "all" && mongoose.Types.ObjectId.isValid(challanId)) {
+      challanQuery._id = challanId;
+    }
+
+    const activeChallans = await OutletChallan.find(challanQuery)
       .sort({ dispatchDate: 1 })
       .lean();
 
-    const totalChallanAmount = activeChallans.reduce(
-      (sum, c) => sum + (parseAmount(c.totalAmount) || 0),
-      0
-    );
     const totalChallanPieces = activeChallans.reduce(
       (sum, c) => sum + (Number(c.totalQuantity) || 0),
       0
@@ -213,11 +214,22 @@ class OutletBillingService {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
-    const lastSettlement = await OutletBillingSettlement.findOne({
+    const prevSettlements = await OutletBillingSettlement.find({
       franchise: franchise._id,
     })
+      .select("settledOrders settledCounterBills periodEnd createdAt")
       .sort({ periodEnd: -1, createdAt: -1 })
       .lean();
+
+    const lastSettlement = prevSettlements.length > 0 ? prevSettlements[0] : null;
+
+    // Zero Double-Billing: Collect IDs of orders & counter bills already settled in previous bills
+    const alreadySettledOrderIds = new Set(
+      prevSettlements.flatMap((s) => s.settledOrders || []).map(String).filter(Boolean)
+    );
+    const alreadySettledBillIds = new Set(
+      prevSettlements.flatMap((s) => s.settledCounterBills || []).map(String).filter(Boolean)
+    );
 
     let periodStart;
     if (startDate && !isNaN(new Date(startDate).getTime())) {
@@ -241,8 +253,7 @@ class OutletBillingService {
       periodEnd = new Date();
     }
 
-    // Online Sales Query
-    // Matches orders assigned to this franchise with Cashfree / prepaid / confirmed status
+    // Online Sales Query (Prepaid / Cashfree direct to company)
     const orderQuery = {
       $or: [
         { franchise: franchise._id },
@@ -258,15 +269,15 @@ class OutletBillingService {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Filter to ensure only valid online orders (exclude unpaid COD)
+    // Filter to ensure valid prepaid orders AND exclude any already settled orders
     const onlineOrders = rawOnlineOrders.filter((o) => {
+      if (alreadySettledOrderIds.has(String(o._id))) return false;
       if (o.paymentMode === "COD" && o.paymentStatus !== "paid") return false;
       return true;
     });
 
-    const onlineSalesAmount = onlineOrders.reduce(
-      (sum, o) => sum + getOrderTotalAmount(o),
-      0
+    const onlineSalesAmount = Number(
+      onlineOrders.reduce((sum, o) => sum + getOrderTotalAmount(o), 0).toFixed(2)
     );
 
     // Franchise match criteria
@@ -293,7 +304,6 @@ class OutletBillingService {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Also fetch any manual counter sales recorded in OutletStockLog (type: "counter_sale")
     const counterLogsQuery = {
       $and: [
         { $or: franchiseMatches },
@@ -307,21 +317,21 @@ class OutletBillingService {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Set of known bill numbers from CounterBill to prevent double-counting
+    // Prevent double counting across bills & logs
     const knownBillNumbers = new Set(
       walkInBills.map((b) => String(b.bill_number || "").trim().toUpperCase()).filter(Boolean)
     );
 
-    // Standalone stock logs (not already linked to a CounterBill)
     const standaloneLogs = counterLogs.filter((l) => {
       const bNo = String(l.bill_no || "").trim().toUpperCase();
       return !bNo || !knownBillNumbers.has(bNo);
     });
 
-    // Unified offline sales list for UI viewing
+    // Unified offline sales list, excluding already settled items
     const offlineOrdersList = [];
 
     for (const b of walkInBills) {
+      if (alreadySettledBillIds.has(String(b._id))) continue;
       const bAmt = parseAmount(b.grand_total) || parseAmount(b.received_amount) || 0;
       offlineOrdersList.push({
         _id: b._id,
@@ -337,6 +347,7 @@ class OutletBillingService {
     }
 
     for (const l of standaloneLogs) {
+      if (alreadySettledBillIds.has(String(l._id))) continue;
       const lAmt =
         parseAmount(l.total_amount) ||
         (parseAmount(l.unit_price) * (Number(l.quantity) || 1)) ||
@@ -357,41 +368,10 @@ class OutletBillingService {
 
     offlineOrdersList.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    const walkInSalesAmount = offlineOrdersList.reduce((sum, it) => sum + it.amount, 0);
-    const walkInBillsCount = offlineOrdersList.length;
-
-    // 5-Step Exact Billing Formula:
-    // 1. Total Challan Udhar (Stock dispatched to store)
-    // 2. Online Sales (Cashfree) deducted 100% (company already received this from customers)
-    const restAmount = totalChallanAmount > 0
-      ? Math.max(0, totalChallanAmount - onlineSalesAmount)
-      : walkInSalesAmount;
-
-    // 3. Franchise Commission / Margin:
-    // Store gets commission on Online Sales (store packed/delivered the order):
-    const onlineCommission = Number(((onlineSalesAmount * commissionPercentage) / 100).toFixed(2));
-    // Store gets margin on the remaining / offline stock:
-    const restCommission = totalChallanAmount > 0
-      ? Number(((restAmount * commissionPercentage) / 100).toFixed(2))
-      : Number(((walkInSalesAmount * commissionPercentage) / 100).toFixed(2));
-    // Total commission credited to franchise:
-    const commissionAmount = Number((onlineCommission + restCommission).toFixed(2));
-
-    // 4. Final Net Payable (Outlet Owner Dega to Company)
-    // Outlet owner owes restAmount minus total commission (including online sales commission credit):
-    const netPayable = Number(Math.max(0, restAmount - commissionAmount).toFixed(2));
-
-    // 5. Query any outstanding balance from past finalized bills (unpaid / partial)
-    const pastUnpaidBills = await OutletBillingSettlement.find({
-      franchise: franchise._id,
-      paymentStatus: { $in: ["unpaid", "partial"] },
-    }).lean();
-
-    const pastOutstandingBalance = pastUnpaidBills.reduce(
-      (sum, b) => sum + (Number(b.remainingAmount) || 0),
-      0
+    const walkInSalesAmount = Number(
+      offlineOrdersList.reduce((sum, it) => sum + it.amount, 0).toFixed(2)
     );
-    const totalDueWithPast = Number((netPayable + pastOutstandingBalance).toFixed(2));
+    const walkInBillsCount = offlineOrdersList.length;
 
     // Itemized Product Movement (Dispatched - Online Sold - Offline Sold = Remaining)
     const productMap = {};
@@ -411,13 +391,14 @@ class OutletBillingService {
             offlineSoldQty: 0,
             totalSoldQty: 0,
             remainingQty: 0,
+            remainingStockValue: 0,
           };
         }
         productMap[pId].dispatchedQty += Number(it.quantity) || 0;
       }
     }
 
-    // Accumulate Online Sold Qty
+    // Accumulate Online Sold Qty (only from unsettled orders)
     for (const order of onlineOrders) {
       for (const item of order.items || []) {
         const pId = String(item.product?._id || item.product || "");
@@ -429,6 +410,7 @@ class OutletBillingService {
 
     // Accumulate Offline Sold Qty from CounterBills
     for (const bill of walkInBills) {
+      if (alreadySettledBillIds.has(String(bill._id))) continue;
       for (const item of bill.items || []) {
         const pId = String(item.product?._id || item.product || "");
         if (!productMap[pId]) {
@@ -443,6 +425,7 @@ class OutletBillingService {
             offlineSoldQty: 0,
             totalSoldQty: 0,
             remainingQty: 0,
+            remainingStockValue: 0,
           };
         }
         productMap[pId].offlineSoldQty += Number(item.quantity) || 0;
@@ -451,6 +434,7 @@ class OutletBillingService {
 
     // Accumulate Offline Sold Qty from standalone counter logs
     for (const log of standaloneLogs) {
+      if (alreadySettledBillIds.has(String(log._id))) continue;
       const pId = String(log.product?._id || log.product || "");
       if (!productMap[pId]) {
         productMap[pId] = {
@@ -464,16 +448,77 @@ class OutletBillingService {
           offlineSoldQty: 0,
           totalSoldQty: 0,
           remainingQty: 0,
+          remainingStockValue: 0,
         };
       }
       productMap[pId].offlineSoldQty += Number(log.quantity) || 0;
     }
 
+    let calculatedDispatchedValue = 0;
+    let calculatedRemainingStockValue = 0;
+
     const productBreakdown = Object.values(productMap).map((p) => {
       p.totalSoldQty = p.onlineSoldQty + p.offlineSoldQty;
       p.remainingQty = Math.max(0, p.dispatchedQty - p.totalSoldQty);
+      p.remainingStockValue = Number((p.remainingQty * p.price).toFixed(2));
+      calculatedDispatchedValue += p.dispatchedQty * p.price;
+      calculatedRemainingStockValue += p.remainingStockValue;
       return p;
     });
+
+    // 1. Total Dispatched Stock Value in Challan(s)
+    const rawChallanAmount = activeChallans.reduce(
+      (sum, c) => sum + (parseAmount(c.totalAmount) || 0),
+      0
+    );
+    const totalChallanAmount = Number((rawChallanAmount || calculatedDispatchedValue).toFixed(2));
+
+    // 2. Remaining Unsold Consignment Stock Value on Shelf
+    const remainingStockValue = Number(
+      Math.max(
+        0,
+        totalChallanAmount > 0
+          ? Math.min(totalChallanAmount, calculatedRemainingStockValue || (totalChallanAmount - onlineSalesAmount - walkInSalesAmount))
+          : 0
+      ).toFixed(2)
+    );
+
+    // 3. Rest Stock Value (Dispatched - Online Sales)
+    const restAmount = totalChallanAmount > 0
+      ? Math.max(0, totalChallanAmount - onlineSalesAmount)
+      : walkInSalesAmount;
+
+    // 4. Franchise Commission & Margins:
+    // Store gets margin on Offline Counter Sales (e.g. 10% of ₹700 = ₹70):
+    const offlineMarginAmount = Number(((walkInSalesAmount * commissionPercentage) / 100).toFixed(2));
+    // Store gets commission credit for fulfilling Online Orders (e.g. 10% of ₹300 = ₹30):
+    const onlineCommissionAmount = Number(((onlineSalesAmount * commissionPercentage) / 100).toFixed(2));
+    // Total store commission credited:
+    const commissionAmount = Number((offlineMarginAmount + onlineCommissionAmount).toFixed(2));
+
+    // 5. Final Net Payable by Outlet Owner to Company:
+    // Store owner collected walkInSalesAmount in cash at counter.
+    // Store owner remits that collected cash MINUS their total commission (offline margin + online commission credit):
+    let netPayable = 0;
+    if (walkInSalesAmount > 0) {
+      netPayable = Number(Math.max(0, walkInSalesAmount - commissionAmount).toFixed(2));
+    } else if (totalChallanAmount > 0 && calculatedRemainingStockValue <= 0 && onlineSalesAmount > 0) {
+      netPayable = Number(Math.max(0, restAmount - commissionAmount).toFixed(2));
+    } else {
+      netPayable = 0;
+    }
+
+    // 6. Query any outstanding balance from past finalized bills (unpaid / partial)
+    const pastUnpaidBills = await OutletBillingSettlement.find({
+      franchise: franchise._id,
+      paymentStatus: { $in: ["unpaid", "partial"] },
+    }).lean();
+
+    const pastOutstandingBalance = pastUnpaidBills.reduce(
+      (sum, b) => sum + (Number(b.remainingAmount) || 0),
+      0
+    );
+    const totalDueWithPast = Number((netPayable + pastOutstandingBalance).toFixed(2));
 
     return {
       franchise: {
@@ -485,6 +530,7 @@ class OutletBillingService {
       },
       periodStart,
       periodEnd,
+      selectedChallanId: challanId || "all",
       activeChallans: activeChallans.map((c) => ({
         _id: c._id,
         challanNumber: c.challanNumber,
@@ -494,7 +540,6 @@ class OutletBillingService {
         itemsCount: c.items?.length || 0,
       })),
       totalChallanPieces,
-      // 5-Step Formula Data:
       totalChallanAmount: Number(totalChallanAmount.toFixed(2)),
       onlineSalesCount: onlineOrders.length,
       onlineSalesAmount: Number(onlineSalesAmount.toFixed(2)),
@@ -513,10 +558,12 @@ class OutletBillingService {
       offlineSalesAmount: Number(walkInSalesAmount.toFixed(2)),
       offlineOrdersList: offlineOrdersList.slice(0, 50),
       totalSalesAmount: Number((onlineSalesAmount + walkInSalesAmount).toFixed(2)),
+      remainingStockValue,
       restAmount: Number(restAmount.toFixed(2)),
       commissionPercentage,
-      onlineCommissionAmount: Number(onlineCommission.toFixed(2)),
-      restCommissionAmount: Number(restCommission.toFixed(2)),
+      offlineMarginAmount,
+      onlineCommissionAmount,
+      restCommissionAmount: offlineMarginAmount,
       commissionAmount,
       netPayable,
       pastOutstandingBalance,
@@ -527,10 +574,10 @@ class OutletBillingService {
   }
 
   /**
-   * 4. 1-Click Generate Bill (Locks active challans into a permanent Bill Slip)
+   * 4. 1-Click Generate Bill (Locks active challans & sales into a permanent Bill Slip)
    */
-  async generateBill({ franchiseId, startDate = null, endDate = null, notes = "", admin = null }) {
-    const calc = await this.getLiveCalculation({ franchiseId, startDate, endDate });
+  async generateBill({ franchiseId, startDate = null, endDate = null, challanId = null, notes = "", admin = null }) {
+    const calc = await this.getLiveCalculation({ franchiseId, startDate, endDate, challanId });
 
     if (calc.totalChallanAmount <= 0 && calc.walkInSalesAmount <= 0 && calc.onlineSalesAmount <= 0) {
       throw new Error("No active stock challan or sales found to generate a bill.");
@@ -555,11 +602,17 @@ class OutletBillingService {
       onlineSalesAmount: calc.onlineSalesAmount,
       walkInBillsCount: calc.walkInBillsCount,
       walkInSalesAmount: calc.walkInSalesAmount,
+      remainingStockValue: calc.remainingStockValue,
       restAmount: calc.restAmount,
       commissionPercentage: calc.commissionPercentage,
+      offlineMarginAmount: calc.offlineMarginAmount,
+      onlineCommissionAmount: calc.onlineCommissionAmount,
       commissionAmount: calc.commissionAmount,
       netPayable: calc.netPayable,
       productBreakdown: calc.productBreakdown,
+      // Record settled order and bill IDs to guarantee zero double billing in subsequent settlements
+      settledOrders: calc.onlineOrdersList.map((o) => o._id),
+      settledCounterBills: calc.offlineOrdersList.map((b) => b._id),
       amountPaid: 0,
       remainingAmount: calc.netPayable,
       paymentStatus: calc.netPayable <= 0 ? "paid" : "unpaid",
@@ -583,13 +636,24 @@ class OutletBillingService {
       }
     }
 
-    // Mark all included active challans as settled
+    // Check if any challans are completely sold out (remainingQty === 0)
+    const hasRemainingStock = (calc.productBreakdown || []).some((p) => p.remainingQty > 0);
     const challanIds = calc.activeChallans.map((c) => c._id);
+
     if (challanIds.length > 0) {
-      await OutletChallan.updateMany(
-        { _id: { $in: challanIds } },
-        { status: "settled", settlementId: bill._id }
-      );
+      if (!hasRemainingStock) {
+        // All items sold out: mark challans settled
+        await OutletChallan.updateMany(
+          { _id: { $in: challanIds } },
+          { status: "settled", settlementId: bill._id }
+        );
+      } else {
+        // Stock remaining on shelf: link latest settlement ID but keep status active
+        await OutletChallan.updateMany(
+          { _id: { $in: challanIds } },
+          { settlementId: bill._id }
+        );
+      }
     }
 
     return await OutletBillingSettlement.findById(bill._id)
@@ -598,9 +662,6 @@ class OutletBillingService {
       .lean();
   }
 
-  /**
-   * 5. Get Bills History with pagination
-   */
   async getBills({ franchiseId, page = 1, limit = 50 }) {
     const match = {};
     if (franchiseId && franchiseId !== "all") {

@@ -26,7 +26,7 @@ const getChallans = asyncHandler(async (req, res) => {
  */
 const getLiveCalculation = asyncHandler(async (req, res) => {
   const franchiseId = req.scopedFranchiseId || req.query.franchiseId;
-  const { startDate, endDate } = req.query;
+  const { startDate, endDate, challanId } = req.query;
 
   if (!franchiseId || franchiseId === "all") {
     return res.status(400).json(
@@ -38,6 +38,7 @@ const getLiveCalculation = asyncHandler(async (req, res) => {
     franchiseId,
     startDate,
     endDate,
+    challanId,
   });
 
   return res.status(200).json(
@@ -50,7 +51,7 @@ const getLiveCalculation = asyncHandler(async (req, res) => {
  */
 const generateBill = asyncHandler(async (req, res) => {
   const franchiseId = req.scopedFranchiseId || req.body.franchiseId;
-  const { startDate, endDate, notes } = req.body;
+  const { startDate, endDate, notes, challanId } = req.body;
 
   if (!franchiseId || franchiseId === "all") {
     return res.status(400).json(
@@ -62,6 +63,7 @@ const generateBill = asyncHandler(async (req, res) => {
     franchiseId,
     startDate,
     endDate,
+    challanId,
     notes,
     admin: req.admin,
   });

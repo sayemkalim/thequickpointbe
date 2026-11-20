@@ -38,6 +38,7 @@ const ProductMovementBreakdownSchema = new mongoose.Schema(
     offlineSoldQty: { type: Number, default: 0 },
     totalSoldQty: { type: Number, default: 0 },
     remainingQty: { type: Number, default: 0 },
+    remainingStockValue: { type: Number, default: 0 },
   },
   { _id: false }
 );
@@ -72,29 +73,39 @@ const OutletBillingSettlementSchema = new mongoose.Schema(
         dispatchDate: { type: Date },
       },
     ],
-    // 1. Total Challan Amount (Outlet par Udhar)
+    // 1. Total Challan Stock Value Dispatched
     totalChallanAmount: { type: Number, required: true, default: 0 },
 
     // 2. Online Sales (Direct to Company via Cashfree - 100% Minus from Challan)
     onlineSalesCount: { type: Number, default: 0 },
     onlineSalesAmount: { type: Number, required: true, default: 0 },
 
-    // Walk-in Counter Sales Info
+    // 3. Offline Counter Sales Collected at Store Counter
     walkInBillsCount: { type: Number, default: 0 },
     walkInSalesAmount: { type: Number, default: 0 },
 
-    // 3. Rest Amount = Challan Bill - Online Sales
+    // 4. Remaining Unsold Consignment Stock Value on Shelf
+    remainingStockValue: { type: Number, default: 0 },
+
+    // Rest Amount (Total Challan - Online Sales)
     restAmount: { type: Number, required: true, default: 0 },
 
-    // 4. Franchise Commission % and Amount
+    // Commission & Margins
     commissionPercentage: { type: Number, required: true, default: 10 },
+    offlineMarginAmount: { type: Number, default: 0 },
+    onlineCommissionAmount: { type: Number, default: 0 },
     commissionAmount: { type: Number, required: true, default: 0 },
 
-    // 5. Final Net Payable (Outlet Owner Dega) = Rest Amount - Commission Amount
+    // 5. Final Net Payable by Store Owner to Company:
+    // Offline Counter Sales Collected MINUS Total Commission Credited (Offline Margin + Online Commission)
     netPayable: { type: Number, required: true, default: 0 },
 
-    // Product Movement Breakdown
+    // Itemized Product Movement Breakdown
     productBreakdown: [ProductMovementBreakdownSchema],
+
+    // Settled Orders & Bills (Guarantees Zero Double-Billing in future settlements)
+    settledOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }],
+    settledCounterBills: [{ type: mongoose.Schema.Types.Mixed }],
 
     // Payment Tracking
     amountPaid: { type: Number, default: 0 },
@@ -143,4 +154,3 @@ const OutletBillingSettlement = mongoose.model(
 );
 
 module.exports = OutletBillingSettlement;
-
