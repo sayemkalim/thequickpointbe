@@ -5,6 +5,7 @@ const Franchise = require("../../models/franchiseModel");
 const Product = require("../../models/productsModel");
 const Order = require("../../models/orderModel");
 const CounterBill = require("../../models/counterBillModel");
+const OutletStockLog = require("../../models/outletStockLogModel");
 
 // Safe amount parser handling Decimal128, lean objects, strings, numbers
 const parseAmount = (val) => {
@@ -268,24 +269,96 @@ class OutletBillingService {
       0
     );
 
-    // Walk-in Counter Sales during active period
+    // Franchise match criteria
+    const franchiseMatches = [
+      { franchise: franchise._id },
+      { franchise: new mongoose.Types.ObjectId(franchiseId) },
+      { franchise: String(franchise._id) },
+    ];
+
+    // Walk-in Counter Sales (CounterBill & Counter Stock Logs)
     const walkInQuery = {
-      $or: [
-        { franchise: franchise._id },
-        { franchise: new mongoose.Types.ObjectId(franchiseId) },
-        { franchise: String(franchise._id) },
+      $and: [
+        { $or: franchiseMatches },
+        {
+          $or: [
+            { createdAt: { $gte: periodStart, $lte: periodEnd } },
+            { bill_date: { $gte: periodStart, $lte: periodEnd } },
+          ],
+        },
       ],
-      createdAt: { $gte: periodStart, $lte: periodEnd },
     };
 
     const walkInBills = await CounterBill.find(walkInQuery)
       .sort({ createdAt: -1 })
       .lean();
 
-    const walkInSalesAmount = walkInBills.reduce(
-      (sum, b) => sum + (parseAmount(b.grand_total) || parseAmount(b.received_amount) || 0),
-      0
+    // Also fetch any manual counter sales recorded in OutletStockLog (type: "counter_sale")
+    const counterLogsQuery = {
+      $and: [
+        { $or: franchiseMatches },
+        { type: "counter_sale" },
+        { createdAt: { $gte: periodStart, $lte: periodEnd } },
+      ],
+    };
+
+    const counterLogs = await OutletStockLog.find(counterLogsQuery)
+      .populate("product", "name price discounted_price unit sku")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Set of known bill numbers from CounterBill to prevent double-counting
+    const knownBillNumbers = new Set(
+      walkInBills.map((b) => String(b.bill_number || "").trim().toUpperCase()).filter(Boolean)
     );
+
+    // Standalone stock logs (not already linked to a CounterBill)
+    const standaloneLogs = counterLogs.filter((l) => {
+      const bNo = String(l.bill_no || "").trim().toUpperCase();
+      return !bNo || !knownBillNumbers.has(bNo);
+    });
+
+    // Unified offline sales list for UI viewing
+    const offlineOrdersList = [];
+
+    for (const b of walkInBills) {
+      const bAmt = parseAmount(b.grand_total) || parseAmount(b.received_amount) || 0;
+      offlineOrdersList.push({
+        _id: b._id,
+        billNumber: b.bill_number || `POS-${String(b._id).slice(-6)}`,
+        date: b.bill_date || b.createdAt,
+        customerName: b.customer_name || "Walk-in Customer",
+        customerPhone: b.customer_phone || "—",
+        amount: Number(bAmt.toFixed(2)),
+        itemsCount: b.items?.length || b.total_quantity || 1,
+        paymentMethod: b.payment_method || "cash",
+        source: "pos",
+      });
+    }
+
+    for (const l of standaloneLogs) {
+      const lAmt =
+        parseAmount(l.total_amount) ||
+        (parseAmount(l.unit_price) * (Number(l.quantity) || 1)) ||
+        parseAmount(l.received_amount) ||
+        0;
+      offlineOrdersList.push({
+        _id: l._id,
+        billNumber: l.bill_no || `SALE-${String(l._id).slice(-6)}`,
+        date: l.createdAt,
+        customerName: l.customer_name || "Counter Customer",
+        customerPhone: l.customer_mobile || "—",
+        amount: Number(lAmt.toFixed(2)),
+        itemsCount: Number(l.quantity) || 1,
+        paymentMethod: l.payment_method || "cash",
+        source: "counter_sale",
+      });
+    }
+
+    offlineOrdersList.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const walkInSalesAmount = offlineOrdersList.reduce((sum, it) => sum + it.amount, 0);
+    const walkInBillsCount = offlineOrdersList.length;
 
     // 5-Step Exact Billing Formula
     // 1. Total Challan Udhar
@@ -334,14 +407,46 @@ class OutletBillingService {
       }
     }
 
-    // Accumulate Offline Sold Qty
+    // Accumulate Offline Sold Qty from CounterBills
     for (const bill of walkInBills) {
       for (const item of bill.items || []) {
         const pId = String(item.product?._id || item.product || "");
-        if (productMap[pId]) {
-          productMap[pId].offlineSoldQty += Number(item.quantity) || 0;
+        if (!productMap[pId]) {
+          productMap[pId] = {
+            product: item.product?._id || item.product,
+            name: item.name || "Product",
+            sku: item.sku || "",
+            unit: item.unit || "pcs",
+            price: Number(item.selling_price) || 0,
+            dispatchedQty: 0,
+            onlineSoldQty: 0,
+            offlineSoldQty: 0,
+            totalSoldQty: 0,
+            remainingQty: 0,
+          };
         }
+        productMap[pId].offlineSoldQty += Number(item.quantity) || 0;
       }
+    }
+
+    // Accumulate Offline Sold Qty from standalone counter logs
+    for (const log of standaloneLogs) {
+      const pId = String(log.product?._id || log.product || "");
+      if (!productMap[pId]) {
+        productMap[pId] = {
+          product: log.product?._id || log.product,
+          name: log.product?.name || log.sku || "Product",
+          sku: log.sku || "",
+          unit: log.product?.unit || "pcs",
+          price: Number(log.unit_price) || 0,
+          dispatchedQty: 0,
+          onlineSoldQty: 0,
+          offlineSoldQty: 0,
+          totalSoldQty: 0,
+          remainingQty: 0,
+        };
+      }
+      productMap[pId].offlineSoldQty += Number(log.quantity) || 0;
     }
 
     const productBreakdown = Object.values(productMap).map((p) => {
@@ -382,8 +487,12 @@ class OutletBillingService {
         paymentMode: o.paymentMode || "ONLINE",
         status: o.status,
       })),
-      walkInBillsCount: walkInBills.length,
+      walkInBillsCount,
       walkInSalesAmount: Number(walkInSalesAmount.toFixed(2)),
+      offlineSalesCount: walkInBillsCount,
+      offlineSalesAmount: Number(walkInSalesAmount.toFixed(2)),
+      offlineOrdersList: offlineOrdersList.slice(0, 50),
+      totalSalesAmount: Number((onlineSalesAmount + walkInSalesAmount).toFixed(2)),
       restAmount: Number(restAmount.toFixed(2)),
       commissionPercentage,
       commissionAmount,
