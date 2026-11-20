@@ -185,5 +185,53 @@ describe("QuickPoint Simple Franchise Stock Challan & Daily Settlement Suite", (
     assert.equal(typeof SettlementService.getFranchiseSalesSummary, "function");
     assert.equal(typeof SettlementService.getFranchiseStockSummary, "function");
   });
+
+  test("6. Challan Amount minus Online and Offline sales equals Remaining Stock, and Offline cash is settled minus commission", () => {
+    // Challan dispatched: 10,000 INR
+    const totalChallanAmount = 10000;
+    // Online sales (Cashfree -> Direct to Company Main Owner): 4,000 INR
+    const onlineSalesAmount = 4000;
+    // Offline counter sales (Collected by Franchise Owner in Cash): 3,000 INR
+    const offlineSalesAmount = 3000;
+
+    const totalSalesAmount = onlineSalesAmount + offlineSalesAmount;
+    const remainingStockAmount = totalChallanAmount - totalSalesAmount;
+
+    assert.equal(totalSalesAmount, 7000);
+    assert.equal(remainingStockAmount, 3000);
+
+    // Online payment went direct to main owner, so franchise owes 0 for online sales:
+    const onlineFranchisePayable = 0;
+
+    // Offline sales commission (10%):
+    const commissionPercentage = 10;
+    const commissionAmount = (offlineSalesAmount * commissionPercentage) / 100;
+    const netPayableToMainOwner = offlineSalesAmount - commissionAmount;
+
+    assert.equal(commissionAmount, 300);
+    assert.equal(netPayableToMainOwner, 2700);
+
+    const settlement = new FranchiseSettlement({
+      settlementNumber: "SET-2611-0003",
+      franchise: new mongoose.Types.ObjectId(),
+      periodStart: new Date(),
+      periodEnd: new Date(),
+      totalChallanAmount,
+      totalSalesAmount,
+      remainingStockAmount,
+      onlineCollectedByCompany: onlineSalesAmount,
+      walkInGrossAmount: offlineSalesAmount,
+      commissionPercentage,
+      commissionAmount,
+      netPayable: netPayableToMainOwner,
+      remainingAmount: netPayableToMainOwner,
+    });
+
+    assert.equal(settlement.totalChallanAmount, 10000);
+    assert.equal(settlement.totalSalesAmount, 7000);
+    assert.equal(settlement.remainingStockAmount, 3000);
+    assert.equal(settlement.onlineCollectedByCompany, 4000);
+    assert.equal(settlement.netPayable, 2700);
+  });
 });
 

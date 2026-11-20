@@ -114,7 +114,18 @@ class FranchiseSettlementService {
       });
     });
 
-    // 3. Fetch Stock Dispatches (Challans) in this period
+    // 3. Fetch Outlet Inventories to map product prices & calculate stock
+    const inventories = await FranchiseInventory.find({ franchise: franchise._id })
+      .populate("product", "name sku unit price discounted_price")
+      .lean();
+
+    const productPriceMap = {};
+    inventories.forEach((inv) => {
+      const pId = String(inv.product?._id || inv.product);
+      productPriceMap[pId] = Number(inv.product?.discounted_price || inv.product?.price || 0);
+    });
+
+    // 4. Fetch Stock Dispatches (Challans) in this period
     const challans = await StockChallan.find({
       franchise: franchise._id,
       status: { $in: ["dispatched", "received"] },
@@ -123,20 +134,23 @@ class FranchiseSettlementService {
 
     const challanProductQtyMap = {};
     let totalStockReceived = 0;
+    let totalChallanAmount = 0;
 
     challans.forEach((ch) => {
+      let chAmt = Number(ch.totalAmount || 0);
+      let itemsAmt = 0;
       (ch.items || []).forEach((item) => {
         const pId = String(item.product?._id || item.product);
         const qty = Number(item.quantity || 0);
+        const unitPrice = Number(
+          item.price || item.pricePerUnit || productPriceMap[pId] || 0
+        );
         totalStockReceived += qty;
         challanProductQtyMap[pId] = (challanProductQtyMap[pId] || 0) + qty;
+        itemsAmt += (item.amount || (qty * unitPrice));
       });
+      totalChallanAmount += (chAmt > 0 ? chAmt : itemsAmt);
     });
-
-    // 4. Stock Summary per Product
-    const inventories = await FranchiseInventory.find({ franchise: franchise._id })
-      .populate("product", "name sku unit price")
-      .lean();
 
     const stockSummary = inventories.map((inv) => {
       const pId = String(inv.product?._id || inv.product);
@@ -179,6 +193,15 @@ class FranchiseSettlementService {
       Math.max(0, walkInGrossAmount - commissionAmount).toFixed(2)
     );
 
+    const totalSalesAmount = Number((onlineGrossAmount + walkInGrossAmount).toFixed(2));
+    const currentInventoryValue = inventories.reduce(
+      (sum, inv) => sum + (Number(inv.quantity_on_hand || 0) * Number(inv.product?.price || 0)),
+      0
+    );
+    const remainingStockAmount = totalChallanAmount > 0
+      ? Number(Math.max(0, totalChallanAmount - totalSalesAmount).toFixed(2))
+      : Number(currentInventoryValue.toFixed(2));
+
     return {
       franchise: {
         _id: franchise._id,
@@ -191,9 +214,12 @@ class FranchiseSettlementService {
       periodEnd,
       stockSummary,
       totalStockReceived,
+      totalChallanAmount: Number(totalChallanAmount.toFixed(2)),
       totalOnlineSold: onlineTotalQuantity,
       totalWalkInSold: walkInTotalQuantity,
       totalRemainingStock,
+      totalSalesAmount,
+      remainingStockAmount,
       onlineSalesSummary: {
         totalOrders: onlineOrders.length,
         grossAmount: Number(onlineGrossAmount.toFixed(2)),
@@ -230,9 +256,12 @@ class FranchiseSettlementService {
       periodEnd: preview.periodEnd,
       stockSummary: preview.stockSummary,
       totalStockReceived: preview.totalStockReceived,
+      totalChallanAmount: preview.totalChallanAmount,
       totalOnlineSold: preview.totalOnlineSold,
       totalWalkInSold: preview.totalWalkInSold,
       totalRemainingStock: preview.totalRemainingStock,
+      totalSalesAmount: preview.totalSalesAmount,
+      remainingStockAmount: preview.remainingStockAmount,
       onlineSalesSummary: preview.onlineSalesSummary,
       onlineCollectedByCompany: preview.onlineCollectedByCompany,
       walkInSalesSummary: preview.walkInSalesSummary,
