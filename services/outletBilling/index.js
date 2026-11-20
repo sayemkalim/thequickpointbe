@@ -381,6 +381,18 @@ class OutletBillingService {
     // Outlet owner owes restAmount minus total commission (including online sales commission credit):
     const netPayable = Number(Math.max(0, restAmount - commissionAmount).toFixed(2));
 
+    // 5. Query any outstanding balance from past finalized bills (unpaid / partial)
+    const pastUnpaidBills = await OutletBillingSettlement.find({
+      franchise: franchise._id,
+      paymentStatus: { $in: ["unpaid", "partial"] },
+    }).lean();
+
+    const pastOutstandingBalance = pastUnpaidBills.reduce(
+      (sum, b) => sum + (Number(b.remainingAmount) || 0),
+      0
+    );
+    const totalDueWithPast = Number((netPayable + pastOutstandingBalance).toFixed(2));
+
     // Itemized Product Movement (Dispatched - Online Sold - Offline Sold = Remaining)
     const productMap = {};
 
@@ -507,6 +519,9 @@ class OutletBillingService {
       restCommissionAmount: Number(restCommission.toFixed(2)),
       commissionAmount,
       netPayable,
+      pastOutstandingBalance,
+      pastUnpaidBillsCount: pastUnpaidBills.length,
+      totalDueWithPast,
       productBreakdown,
     };
   }
