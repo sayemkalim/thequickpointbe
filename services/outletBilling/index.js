@@ -368,12 +368,15 @@ class OutletBillingService {
 
     offlineOrdersList.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Outlet owner enters their walk-in sales. Do not auto-fetch from POS logs by default.
-    const manualOffline = manualOfflineSalesAmount !== null && manualOfflineSalesAmount !== undefined && !isNaN(Number(manualOfflineSalesAmount))
+    // Automated Walk-in Counter Sales from POS/Counter logs, with manual override support
+    const detectedWalkInSales = Number(
+      offlineOrdersList.reduce((sum, it) => sum + it.amount, 0).toFixed(2)
+    );
+    const manualOffline = manualOfflineSalesAmount !== null && manualOfflineSalesAmount !== undefined && manualOfflineSalesAmount !== "" && !isNaN(Number(manualOfflineSalesAmount))
       ? Number(Number(manualOfflineSalesAmount).toFixed(2))
-      : 0;
-    const walkInSalesAmount = manualOffline;
-    const walkInBillsCount = manualOffline > 0 ? 1 : 0;
+      : null;
+    const walkInSalesAmount = manualOffline !== null ? manualOffline : detectedWalkInSales;
+    const walkInBillsCount = offlineOrdersList.length;
 
     // Itemized Product Movement (Dispatched - Online Sold - Offline Sold = Remaining)
     const productMap = {};
@@ -557,7 +560,8 @@ class OutletBillingService {
       })),
       walkInBillsCount,
       walkInSalesAmount: Number(walkInSalesAmount.toFixed(2)),
-      isManualOffline: true,
+      detectedWalkInSales: Number(detectedWalkInSales.toFixed(2)),
+      isManualOffline: manualOffline !== null,
       offlineSalesCount: walkInBillsCount,
       offlineSalesAmount: Number(walkInSalesAmount.toFixed(2)),
       offlineOrdersList: offlineOrdersList.slice(0, 50),
