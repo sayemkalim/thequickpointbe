@@ -46,9 +46,9 @@ module.exports = {
     "super_admin",
   ]),
   // Dairy Platform RBAC
-  centralAdmin: authenticateRole(["super_admin", "admin"]),
+  centralAdmin: authenticateRole(["super_admin", "admin", "sub_admin"]),
   franchiseOwner: authenticateRole(["franchise_owner"]),
-  franchiseOrAdmin: authenticateRole(["super_admin", "admin", "franchise_owner"]),
+  franchiseOrAdmin: authenticateRole(["super_admin", "admin", "sub_admin", "franchise_owner"]),
   
   // Guard ensuring franchise owners can ONLY access their own outlet's resources
   scopeToFranchise: (req, res, next) => {
@@ -56,7 +56,7 @@ module.exports = {
       if (!req.admin) {
         return res.status(401).json(new ApiResponse(401, null, "Authentication required", false));
       }
-      const isCentral = ["super_admin", "admin"].includes(req.admin.role);
+      const isCentral = ["super_admin", "admin", "sub_admin"].includes(req.admin.role);
       const body = req.body || {};
       const params = req.params || {};
       const query = req.query || {};
@@ -65,11 +65,10 @@ module.exports = {
         if (!req.admin.franchise) {
           return res.status(403).json(new ApiResponse(403, null, "No franchise assigned to this owner account", false));
         }
-        const targetFranchise = params.franchiseId || body.franchiseId || query.franchiseId || body.franchise;
-        if (targetFranchise && String(targetFranchise) !== String(req.admin.franchise)) {
-          return res.status(403).json(new ApiResponse(403, null, "Unauthorized: You can only access your assigned franchise outlet.", false));
-        }
+        // Always force the scoped franchise ID to the owner's assigned franchise
         req.scopedFranchiseId = req.admin.franchise;
+        if (req.query) req.query.franchiseId = String(req.admin.franchise);
+        if (req.body) req.body.franchiseId = String(req.admin.franchise);
       } else if (isCentral) {
         const rawId = params.franchiseId || body.franchiseId || query.franchiseId || body.franchise || null;
         req.scopedFranchiseId = (rawId && rawId !== "all" && rawId !== "undefined" && rawId !== "null") ? rawId : null;
