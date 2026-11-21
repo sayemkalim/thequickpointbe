@@ -217,11 +217,19 @@ class OutletBillingService {
     const prevSettlements = await OutletBillingSettlement.find({
       franchise: franchise._id,
     })
-      .select("settledOrders settledCounterBills periodEnd createdAt")
+      .select("billNumber settledOrders settledCounterBills periodEnd remainingStockValue createdAt")
       .sort({ periodEnd: -1, createdAt: -1 })
       .lean();
 
     const lastSettlement = prevSettlements.length > 0 ? prevSettlements[0] : null;
+
+    // Check if previous settlement had unsold consignment stock left on shelf (Opening Stock)
+    const openingStockValue =
+      lastSettlement && Number(lastSettlement.remainingStockValue) > 0
+        ? Number(Number(lastSettlement.remainingStockValue).toFixed(2))
+        : 0;
+    const previousSettlementBillNumber =
+      openingStockValue > 0 && lastSettlement?.billNumber ? lastSettlement.billNumber : null;
 
     // Zero Double-Billing: Collect IDs of orders & counter bills already settled in previous bills
     const alreadySettledOrderIds = new Set(
@@ -481,10 +489,13 @@ class OutletBillingService {
     );
     const totalChallanAmount = Number((rawChallanAmount || calculatedDispatchedValue).toFixed(2));
 
+    // Total Available Stock on Shelf = Dispatched Stock in this Challan + Opening Stock carried forward from previous batch
+    const totalBatchStockAmount = Number((totalChallanAmount + openingStockValue).toFixed(2));
+
     // Automated Walk-in Counter Sales strictly belonging to THIS specific challan:
     const detectedFromItems = Number(challanOfflineSoldAmount.toFixed(2));
     const allOfflineTotal = Number(offlineOrdersList.reduce((sum, it) => sum + it.amount, 0).toFixed(2));
-    const maxWalkInCapacity = totalChallanAmount > 0 ? Math.max(0, totalChallanAmount - onlineSalesAmount) : allOfflineTotal;
+    const maxWalkInCapacity = totalBatchStockAmount > 0 ? Math.max(0, totalBatchStockAmount - onlineSalesAmount) : allOfflineTotal;
 
     const detectedWalkInSales = detectedFromItems > 0
       ? Number(Math.min(maxWalkInCapacity, detectedFromItems).toFixed(2))
@@ -503,15 +514,15 @@ class OutletBillingService {
     const remainingStockValue = Number(
       Math.max(
         0,
-        totalChallanAmount > 0
-          ? Math.max(0, totalChallanAmount - totalChallanSold)
+        totalBatchStockAmount > 0
+          ? Math.max(0, totalBatchStockAmount - totalChallanSold)
           : 0
       ).toFixed(2)
     );
 
-    // 3. Rest Stock Value (Dispatched - Online Sales)
-    const restAmount = totalChallanAmount > 0
-      ? Math.max(0, totalChallanAmount - onlineSalesAmount)
+    // 3. Rest Stock Value (Batch Stock - Online Sales)
+    const restAmount = totalBatchStockAmount > 0
+      ? Math.max(0, totalBatchStockAmount - onlineSalesAmount)
       : walkInSalesAmount;
 
     // 4. Franchise Commission & Margins:
@@ -568,6 +579,9 @@ class OutletBillingService {
       })),
       totalChallanPieces,
       totalChallanAmount: Number(totalChallanAmount.toFixed(2)),
+      openingStockValue,
+      previousSettlementBillNumber,
+      totalBatchStockAmount,
       onlineSalesCount: onlineOrders.length,
       onlineSalesAmount: Number(onlineSalesAmount.toFixed(2)),
       onlineOrdersList: onlineOrders.slice(0, 30).map((o) => ({
@@ -618,10 +632,11 @@ class OutletBillingService {
       throw new Error("Cannot generate settlement bill: No sales recorded. Please enter offline sales or fulfill online orders before settling.");
     }
 
-    const remainingStock = Number(Math.max(0, calc.totalChallanAmount - totalSold).toFixed(2));
+    const totalBatchStock = Number((calc.totalBatchStockAmount || calc.totalChallanAmount).toFixed(2));
+    const remainingStock = Number(Math.max(0, totalBatchStock - totalSold).toFixed(2));
     if (remainingStock > 0 && !isPreRestockSettlement) {
       throw new Error(
-        `Cannot generate settlement bill: Batch stock is not fully sold yet (₹${remainingStock.toFixed(2)} remaining on shelf). Settlement requires Total Sold (Online + Walk-in) to equal Challan Stock (₹${calc.totalChallanAmount.toFixed(2)}), or settlement must occur before a new restock.`
+        `Cannot generate settlement bill: Batch stock is not fully sold yet (₹${remainingStock.toFixed(2)} remaining on shelf). Settlement requires Total Sold (Online + Walk-in) to equal Total Batch Stock (₹${totalBatchStock.toFixed(2)}), or settlement must occur before a new restock.`
       );
     }
 
@@ -640,6 +655,9 @@ class OutletBillingService {
         dispatchDate: c.dispatchDate,
       })),
       totalChallanAmount: calc.totalChallanAmount,
+      openingStockValue: calc.openingStockValue || 0,
+      previousSettlementBillNumber: calc.previousSettlementBillNumber || null,
+      totalBatchStockAmount: totalBatchStock,
       onlineSalesCount: calc.onlineSalesCount,
       onlineSalesAmount: calc.onlineSalesAmount,
       walkInBillsCount: calc.walkInBillsCount,

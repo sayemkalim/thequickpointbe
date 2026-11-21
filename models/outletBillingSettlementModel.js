@@ -76,6 +76,11 @@ const OutletBillingSettlementSchema = new mongoose.Schema(
     // 1. Total Challan Stock Value Dispatched
     totalChallanAmount: { type: Number, required: true, default: 0 },
 
+    // Opening Shelf Stock Carried Forward from Previous Batch
+    openingStockValue: { type: Number, default: 0 },
+    previousSettlementBillNumber: { type: String, default: null },
+    totalBatchStockAmount: { type: Number, default: 0 },
+
     // 2. Online Sales (Direct to Company via Cashfree - 100% Minus from Challan)
     onlineSalesCount: { type: Number, default: 0 },
     onlineSalesAmount: { type: Number, required: true, default: 0 },

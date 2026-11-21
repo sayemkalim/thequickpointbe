@@ -166,4 +166,42 @@ test("QuickPoint Outlet Billing & Consignment Settlement Suite", async (t) => {
     assert.equal(bill.remainingAmount, 300); // 300 baaki
     assert.equal(bill.paymentStatus, "partial");
   });
+
+  await t.test("6. Opening Shelf Stock Carried Forward: Remaining ₹232 from previous bill adds to new batch stock", () => {
+    const previousBillRemainingStock = 232;
+    const newChallanAmount = 3000;
+    const totalBatchStockAmount = newChallanAmount + previousBillRemainingStock; // 3232
+
+    const onlineSalesAmount = 1000;
+    const walkInSalesAmount = 2232;
+    const totalSold = onlineSalesAmount + walkInSalesAmount; // 3232
+    const remainingStockValue = totalBatchStockAmount - totalSold; // 0
+
+    assert.equal(totalBatchStockAmount, 3232);
+    assert.equal(totalSold, 3232);
+    assert.equal(remainingStockValue, 0);
+
+    const settlement = new OutletBillingSettlement({
+      billNumber: "BILL-261120-0005",
+      franchise: new mongoose.Types.ObjectId(),
+      periodStart: new Date(),
+      periodEnd: new Date(),
+      totalChallanAmount: newChallanAmount,
+      openingStockValue: previousBillRemainingStock,
+      previousSettlementBillNumber: "BILL-261120-0004",
+      totalBatchStockAmount,
+      onlineSalesAmount,
+      walkInSalesAmount,
+      remainingStockValue,
+      restAmount: totalBatchStockAmount - onlineSalesAmount,
+      commissionPercentage: 10,
+      commissionAmount: 323.2,
+      netPayable: 1908.8,
+    });
+
+    assert.equal(settlement.totalChallanAmount, 3000);
+    assert.equal(settlement.openingStockValue, 232);
+    assert.equal(settlement.totalBatchStockAmount, 3232);
+    assert.equal(settlement.remainingStockValue, 0);
+  });
 });
