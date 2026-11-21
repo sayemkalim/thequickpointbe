@@ -235,12 +235,14 @@ class OutletBillingService {
     if (startDate && !isNaN(new Date(startDate).getTime())) {
       periodStart = new Date(startDate);
       periodStart.setHours(0, 0, 0, 0);
+    } else if (activeChallans.length > 0) {
+      // Sales for this restock batch start strictly when this challan was dispatched
+      periodStart = new Date(activeChallans[0].dispatchDate);
+      if (lastSettlement && lastSettlement.periodEnd && new Date(lastSettlement.periodEnd) > periodStart) {
+        periodStart = new Date(lastSettlement.periodEnd);
+      }
     } else if (lastSettlement && lastSettlement.periodEnd) {
       periodStart = new Date(lastSettlement.periodEnd);
-    } else if (activeChallans.length > 0) {
-      const chDate = new Date(activeChallans[0].dispatchDate);
-      const chDayStart = new Date(chDate.getFullYear(), chDate.getMonth(), chDate.getDate(), 0, 0, 0, 0);
-      periodStart = chDayStart < todayStart ? chDayStart : todayStart;
     } else {
       periodStart = todayStart;
     }
@@ -368,16 +370,6 @@ class OutletBillingService {
 
     offlineOrdersList.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Automated Walk-in Counter Sales from POS/Counter logs, with manual override support
-    const detectedWalkInSales = Number(
-      offlineOrdersList.reduce((sum, it) => sum + it.amount, 0).toFixed(2)
-    );
-    const manualOffline = manualOfflineSalesAmount !== null && manualOfflineSalesAmount !== undefined && manualOfflineSalesAmount !== "" && !isNaN(Number(manualOfflineSalesAmount))
-      ? Number(Number(manualOfflineSalesAmount).toFixed(2))
-      : null;
-    const walkInSalesAmount = manualOffline !== null ? manualOffline : detectedWalkInSales;
-    const walkInBillsCount = offlineOrdersList.length;
-
     // Itemized Product Movement (Dispatched - Online Sold - Offline Sold = Remaining)
     const productMap = {};
 
@@ -461,13 +453,24 @@ class OutletBillingService {
 
     let calculatedDispatchedValue = 0;
     let calculatedRemainingStockValue = 0;
+    let challanOfflineSoldAmount = 0;
+    let challanOnlineSoldAmount = 0;
 
     const productBreakdown = Object.values(productMap).map((p) => {
+      // Online sold cannot exceed dispatched
+      p.onlineSoldQty = Math.min(p.dispatchedQty, p.onlineSoldQty);
+      // Offline sold cannot exceed remaining stock of this product in this challan
+      const availableForOffline = Math.max(0, p.dispatchedQty - p.onlineSoldQty);
+      p.offlineSoldQty = Math.min(availableForOffline, p.offlineSoldQty);
+
       p.totalSoldQty = p.onlineSoldQty + p.offlineSoldQty;
       p.remainingQty = Math.max(0, p.dispatchedQty - p.totalSoldQty);
       p.remainingStockValue = Number((p.remainingQty * p.price).toFixed(2));
+
       calculatedDispatchedValue += p.dispatchedQty * p.price;
       calculatedRemainingStockValue += p.remainingStockValue;
+      challanOnlineSoldAmount += p.onlineSoldQty * p.price;
+      challanOfflineSoldAmount += p.offlineSoldQty * p.price;
       return p;
     });
 
@@ -478,12 +481,30 @@ class OutletBillingService {
     );
     const totalChallanAmount = Number((rawChallanAmount || calculatedDispatchedValue).toFixed(2));
 
+    // Automated Walk-in Counter Sales strictly belonging to THIS specific challan:
+    const detectedFromItems = Number(challanOfflineSoldAmount.toFixed(2));
+    const allOfflineTotal = Number(offlineOrdersList.reduce((sum, it) => sum + it.amount, 0).toFixed(2));
+    const maxWalkInCapacity = totalChallanAmount > 0 ? Math.max(0, totalChallanAmount - onlineSalesAmount) : allOfflineTotal;
+
+    const detectedWalkInSales = detectedFromItems > 0
+      ? Number(Math.min(maxWalkInCapacity, detectedFromItems).toFixed(2))
+      : Number(Math.min(maxWalkInCapacity, allOfflineTotal).toFixed(2));
+
+    const manualOffline = manualOfflineSalesAmount !== null && manualOfflineSalesAmount !== undefined && manualOfflineSalesAmount !== "" && !isNaN(Number(manualOfflineSalesAmount))
+      ? Number(Number(manualOfflineSalesAmount).toFixed(2))
+      : null;
+    const walkInSalesAmount = manualOffline !== null ? manualOffline : detectedWalkInSales;
+    const walkInBillsCount = offlineOrdersList.length;
+
+    // Total Sold from this Challan = Online Sales + Walk-in Sales
+    const totalChallanSold = Number((onlineSalesAmount + walkInSalesAmount).toFixed(2));
+
     // 2. Remaining Unsold Consignment Stock Value on Shelf
     const remainingStockValue = Number(
       Math.max(
         0,
         totalChallanAmount > 0
-          ? Math.min(totalChallanAmount, calculatedRemainingStockValue || (totalChallanAmount - onlineSalesAmount - walkInSalesAmount))
+          ? Math.max(0, totalChallanAmount - totalChallanSold)
           : 0
       ).toFixed(2)
     );
@@ -566,6 +587,7 @@ class OutletBillingService {
       offlineSalesAmount: Number(walkInSalesAmount.toFixed(2)),
       offlineOrdersList: offlineOrdersList.slice(0, 50),
       totalSalesAmount: Number((onlineSalesAmount + walkInSalesAmount).toFixed(2)),
+      totalChallanSold: Number((onlineSalesAmount + walkInSalesAmount).toFixed(2)),
       remainingStockValue,
       restAmount: Number(restAmount.toFixed(2)),
       commissionPercentage,
