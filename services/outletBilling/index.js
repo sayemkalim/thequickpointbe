@@ -606,16 +606,23 @@ class OutletBillingService {
   /**
    * 4. 1-Click Generate Bill (Locks active challans & sales into a permanent Bill Slip)
    */
-  async generateBill({ franchiseId, startDate = null, endDate = null, challanId = null, notes = "", admin = null, manualOfflineSalesAmount = null }) {
+  async generateBill({ franchiseId, startDate = null, endDate = null, challanId = null, notes = "", admin = null, manualOfflineSalesAmount = null, isPreRestockSettlement = false }) {
     const calc = await this.getLiveCalculation({ franchiseId, startDate, endDate, challanId, manualOfflineSalesAmount });
 
     if (calc.totalChallanAmount <= 0 || !calc.activeChallans || calc.activeChallans.length === 0) {
       throw new Error("Cannot generate settlement bill without an active restock challan. Please restock items from Central Warehouse first.");
     }
 
-    const totalSold = (calc.onlineSalesAmount || 0) + (calc.walkInSalesAmount || 0);
+    const totalSold = Number(((calc.onlineSalesAmount || 0) + (calc.walkInSalesAmount || 0)).toFixed(2));
     if (totalSold <= 0) {
       throw new Error("Cannot generate settlement bill: No sales recorded. Please enter offline sales or fulfill online orders before settling.");
+    }
+
+    const remainingStock = Number(Math.max(0, calc.totalChallanAmount - totalSold).toFixed(2));
+    if (remainingStock > 0 && !isPreRestockSettlement) {
+      throw new Error(
+        `Cannot generate settlement bill: Batch stock is not fully sold yet (₹${remainingStock.toFixed(2)} remaining on shelf). Settlement requires Total Sold (Online + Walk-in) to equal Challan Stock (₹${calc.totalChallanAmount.toFixed(2)}), or settlement must occur before a new restock.`
+      );
     }
 
     const billNumber = await OutletBillingSettlement.generateBillNumber();

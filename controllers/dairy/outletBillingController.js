@@ -52,7 +52,7 @@ const getLiveCalculation = asyncHandler(async (req, res) => {
  */
 const generateBill = asyncHandler(async (req, res) => {
   const franchiseId = req.scopedFranchiseId || req.body.franchiseId;
-  const { startDate, endDate, notes, challanId, manualOfflineSalesAmount } = req.body;
+  const { startDate, endDate, notes, challanId, manualOfflineSalesAmount, isPreRestockSettlement } = req.body;
 
   if (!franchiseId || franchiseId === "all") {
     return res.status(400).json(
@@ -68,6 +68,7 @@ const generateBill = asyncHandler(async (req, res) => {
     notes,
     admin: req.admin,
     manualOfflineSalesAmount,
+    isPreRestockSettlement: isPreRestockSettlement === true || isPreRestockSettlement === "true",
   });
 
   return res.status(201).json(
