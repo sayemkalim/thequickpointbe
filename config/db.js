@@ -1,4 +1,52 @@
 const mongoose = require("mongoose");
+const Admin = require("../models/adminModel");
+const Franchise = require("../models/franchiseModel");
+
+const seedInitialAdmins = async () => {
+  try {
+    const barbighaEmail = "thequickpointbarbigha@gmail.com";
+    let admin = await Admin.findOne({ email: barbighaEmail });
+
+    // Look for Barbigha franchise if exists to link
+    let franchiseId = null;
+    try {
+      const barbighaStore = await Franchise.findOne({
+        $or: [
+          { name: { $regex: "barbigha", $options: "i" } },
+          { city: { $regex: "barbigha", $options: "i" } },
+          { code: { $regex: "barbigha", $options: "i" } },
+        ],
+      });
+      if (barbighaStore) {
+        franchiseId = barbighaStore._id;
+      }
+    } catch (e) {
+      // ignore franchise lookup error
+    }
+
+    if (!admin) {
+      admin = new Admin({
+        name: "Barbigha Admin",
+        email: barbighaEmail,
+        password: "thequickpoint",
+        role: "admin",
+        franchise: franchiseId,
+      });
+      await admin.save();
+      console.log("✅ Seeded admin: " + barbighaEmail);
+    } else {
+      admin.password = "thequickpoint";
+      admin.role = "admin";
+      if (franchiseId && !admin.franchise) {
+        admin.franchise = franchiseId;
+      }
+      await admin.save();
+      console.log("✅ Updated admin password & role for: " + barbighaEmail);
+    }
+  } catch (err) {
+    console.error("Initial admin seed notice:", err.message);
+  }
+};
 
 const connectDB = async () => {
   try {
@@ -8,9 +56,10 @@ const connectDB = async () => {
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
     });
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    console.log("MongoDB Connected: " + conn.connection.host);
+    seedInitialAdmins();
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    console.error("Error: " + error.message);
     process.exit(1);
   }
 };
