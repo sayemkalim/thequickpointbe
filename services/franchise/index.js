@@ -14,8 +14,12 @@ class FranchiseService {
       franchise.qrToken ||
       `OUT_${franchise.code}_${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
     
-    const baseUrl = process.env.APP_URL || "http://localhost:5000";
-    const qrPublicUrl = `${baseUrl}/dairy/outlet/${qrToken}`;
+    const customerFrontendUrl =
+      process.env.STORE_FRONTEND_URL ||
+      process.env.FRONTEND_URL ||
+      "https://www.thequickpoint.com";
+    const cleanBaseUrl = customerFrontendUrl.replace(/\/+$/, "");
+    const qrPublicUrl = `${cleanBaseUrl}/store/${qrToken}`;
 
     const qrCodeDataUrl = await QRCode.toDataURL(qrPublicUrl, {
       errorCorrectionLevel: "H",
