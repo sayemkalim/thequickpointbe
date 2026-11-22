@@ -100,6 +100,7 @@ class CashfreeProvider {
         payment_session_id: `cf_mock_session_${Date.now()}`,
         cf_order_id: `cf_order_${orderId}`,
         order_status: "ACTIVE",
+        mode: "sandbox",
       };
     }
 
@@ -119,11 +120,13 @@ class CashfreeProvider {
       throw new Error(data.message || "Failed to create Cashfree order");
     }
 
+    const mode = creds.baseUrl.includes("sandbox") ? "sandbox" : "production";
     return {
       success: true,
       payment_session_id: data.payment_session_id,
       cf_order_id: data.cf_order_id,
       order_status: data.order_status,
+      mode,
     };
   }
 
