@@ -7,6 +7,13 @@ class FranchiseInventoryService {
    * List inventory for a specific franchise outlet (or all outlets if franchiseId === "all")
    */
   async listByFranchise({ franchiseId, page = 1, per_page = 50, search = "", filter = "all" }) {
+    // Self-heal & reconcile orphaned reservations before listing
+    try {
+      await this.reconcileReservedStock(franchiseId);
+    } catch (recErr) {
+      console.warn("reconcileReservedStock warning:", recErr.message);
+    }
+
     const query = {};
     if (franchiseId && franchiseId !== "all") {
       query.franchise = franchiseId;
@@ -337,6 +344,70 @@ class FranchiseInventoryService {
         }
       );
     }
+  }
+
+  /**
+   * Reconciles reserved_quantity in FranchiseInventory against actual active unfulfilled pickup orders.
+   * Cleans up orphaned reservations caused by failed checkouts, crashed gateway attempts, or abandoned carts.
+   */
+  async reconcileReservedStock(franchiseId = null) {
+    const Order = require("../../models/orderModel");
+
+    const orderQuery = {
+      fulfillmentType: "pickup",
+      status: { $in: ["pending", "confirmed", "processing"] },
+      pickupStatus: { $in: ["pending", "ready_for_pickup"] },
+      $or: [
+        { paymentStatus: "paid" },
+        {
+          paymentStatus: "pending",
+          createdAt: { $gte: new Date(Date.now() - 30 * 60 * 1000) },
+        },
+      ],
+    };
+
+    if (franchiseId && franchiseId !== "all" && mongoose.Types.ObjectId.isValid(franchiseId)) {
+      orderQuery.franchise = new mongoose.Types.ObjectId(franchiseId);
+    }
+
+    const activeOrders = await Order.find(orderQuery).lean();
+
+    const reservedMap = new Map();
+    for (const ord of activeOrders) {
+      const fId = String(ord.franchise);
+      for (const item of ord.items || []) {
+        if (item.inventorySource === "central") continue;
+        const pId = String(item.product?._id || item.product || item.productId || "");
+        const vSku = item.variant_sku || "default";
+        const key = `${fId}:${pId}:${vSku}`;
+        const current = reservedMap.get(key) || 0;
+        reservedMap.set(key, current + Number(item.quantity || 1));
+      }
+    }
+
+    const invQuery = {};
+    if (franchiseId && franchiseId !== "all" && mongoose.Types.ObjectId.isValid(franchiseId)) {
+      invQuery.franchise = new mongoose.Types.ObjectId(franchiseId);
+    }
+
+    const allOutletInvs = await FranchiseInventory.find(invQuery);
+    let fixedCount = 0;
+
+    for (const inv of allOutletInvs) {
+      const fId = String(inv.franchise);
+      const pId = String(inv.product);
+      const vSku = inv.variant_sku || "default";
+      const key = `${fId}:${pId}:${vSku}`;
+      const actualReserved = reservedMap.get(key) || 0;
+
+      if (Number(inv.reserved_quantity || 0) !== actualReserved) {
+        inv.reserved_quantity = actualReserved;
+        await inv.save();
+        fixedCount++;
+      }
+    }
+
+    return { fixedCount, totalInventories: allOutletInvs.length };
   }
 
   /**

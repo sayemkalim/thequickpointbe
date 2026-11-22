@@ -69,6 +69,16 @@ class CashfreeProvider {
       throw new Error("Cashfree payment gateway is not configured or enabled");
     }
 
+    let baseUrl = process.env.APP_URL || process.env.FRONTEND_URL || "https://thequickpoint.com";
+    if (!baseUrl.startsWith("https://")) {
+      baseUrl = baseUrl.replace(/^http:\/\//, "https://");
+      if (!baseUrl.startsWith("https://") || baseUrl.includes("localhost")) {
+        baseUrl = "https://thequickpoint.com";
+      }
+    }
+    const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
+    const returnUrl = `${cleanBaseUrl}/dairy/order-status?order_id={order_id}`;
+
     const payload = {
       order_id: String(orderId),
       order_amount: Number(orderAmount),
@@ -79,7 +89,7 @@ class CashfreeProvider {
         customer_email: customerEmail || "customer@quickpoint.in",
       },
       order_meta: {
-        return_url: `${process.env.APP_URL || "http://localhost:5000"}/dairy/order-status?order_id={order_id}`,
+        return_url: returnUrl,
       },
     };
 

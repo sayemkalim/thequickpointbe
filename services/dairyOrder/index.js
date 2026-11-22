@@ -398,19 +398,27 @@ class DairyOrderService {
     if (paymentGateway === "cashfree" || !paymentGateway) {
       const isCfEnabled = await CashfreeProvider.isEnabled();
       if (isCfEnabled) {
-        gatewayOrderDetails = await CashfreeProvider.createPaymentSession({
-          orderId: order._id,
-          orderAmount: finalOrderAmount,
-          customerId: user?._id ? String(user._id) : `CUST_${customerPhone}`,
-          customerPhone,
-          customerEmail,
-        });
-        if (gatewayOrderDetails) {
-          gatewayOrderDetails.provider = "cashfree";
-          order.cashfreeOrderId =
-            gatewayOrderDetails.cf_order_id ||
-            gatewayOrderDetails.order_id ||
-            gatewayOrderDetails.cfOrderId;
+        try {
+          gatewayOrderDetails = await CashfreeProvider.createPaymentSession({
+            orderId: order._id,
+            orderAmount: finalOrderAmount,
+            customerId: user?._id ? String(user._id) : `CUST_${customerPhone}`,
+            customerPhone,
+            customerEmail,
+          });
+          if (gatewayOrderDetails) {
+            gatewayOrderDetails.provider = "cashfree";
+            order.cashfreeOrderId =
+              gatewayOrderDetails.cf_order_id ||
+              gatewayOrderDetails.order_id ||
+              gatewayOrderDetails.cfOrderId;
+          }
+        } catch (cfErr) {
+          // Rollback reserved stock on Cashfree gateway initiation failure
+          await this.releaseOrderStock(order);
+          throw new Error(
+            `Payment gateway order creation failed: ${cfErr.message || cfErr}`
+          );
         }
       }
     }
