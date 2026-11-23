@@ -30,6 +30,8 @@ router.patch("/payment/:id/return", user, OrderController.returnOrder);
 router.patch("/:id/return", user, OrderController.returnOrder);
 router.post("/:id/return", user, OrderController.returnOrder);
 router.get("/:id", franchiseOrAdmin, OrderController.getOrderById);
+router.get("/payment/:id/bill/download", optionalUser, OrderController.downloadOrderBillPdf);
+router.get("/:id/bill/download", optionalUser, OrderController.downloadOrderBillPdf);
 router.get("/payment/:id/bill", optionalUser, OrderController.getOrderBill);
 router.get("/:id/bill", optionalUser, OrderController.getOrderBill);
 router.get("/user/:id", user, OrderController.getOrderByIdFormUser);

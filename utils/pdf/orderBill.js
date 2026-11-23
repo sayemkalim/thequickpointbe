@@ -39,6 +39,7 @@ const COMPANY_FSSAI = "FASSI No. 20424181000174";
 const COMPANY_PHONE = "9934993423";
 const COMPANY_GSTIN = "10BETPK0389C2ZN, State: 10-Bihar";
 const COMPANY_SUPPORT_EMAIL = "thequickpointbarbigha@gmail.com";
+const COMPANY_UPI_ID = process.env.COMPANY_UPI_ID || "9934993423@upi";
 
 const PAGE_MARGIN = 40;
 const PAGE_WIDTH = 515; // A4 (595.28) - 2 * 40

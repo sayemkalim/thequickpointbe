@@ -152,29 +152,37 @@ const ensureOrderBillGenerated = async (order, { force = false } = {}) => {
   let customer;
   if (order.isGuestOrder) {
     customer = {
-      name: order.guestInfo?.name,
-      email: order.guestInfo?.email,
-      mobile: order.guestInfo?.mobile,
+      name: order.guestInfo?.name || order.address?.name || "Customer",
+      email: order.guestInfo?.email || order.address?.email,
+      mobile: order.guestInfo?.mobile || order.address?.mobile,
     };
   } else {
     const billedUser = await User.findById(order.user).select("name email phone");
     customer = {
-      name: billedUser?.name,
-      email: billedUser?.email,
-      mobile: billedUser?.phone,
+      name: billedUser?.name || order.guestInfo?.name || order.address?.name || "Customer",
+      email: billedUser?.email || order.guestInfo?.email || order.address?.email,
+      mobile: billedUser?.phone || order.guestInfo?.mobile || order.address?.mobile,
     };
   }
 
   const buffer = await buildOrderBillPdfBuffer({
-    order: order.toObject(),
+    order: order.toObject ? order.toObject() : order,
     customer,
   });
 
-  const tempFilePath = path.join(os.tmpdir(), `invoice-${order._id}-${Date.now()}.pdf`);
-  await fs.writeFile(tempFilePath, buffer);
-  const url = await uploadPDF(tempFilePath, "invoices");
+  const baseUrl = (process.env.APP_URL || "https://thequickpointbe-3opb.onrender.com").replace(/\/+$/, "");
+  let url = null;
 
-  order.billUrl = url;
+  try {
+    const tempFilePath = path.join(os.tmpdir(), `invoice-${order._id}-${Date.now()}.pdf`);
+    await fs.writeFile(tempFilePath, buffer);
+    url = await uploadPDF(tempFilePath, "invoices");
+  } catch (uploadErr) {
+    console.warn(`Cloudinary upload failed for order ${order._id}, using direct download URL fallback:`, uploadErr.message);
+    url = `${baseUrl}/api/order/payment/${order._id}/bill/download`;
+  }
+
+  order.billUrl = url || `${baseUrl}/api/order/payment/${order._id}/bill/download`;
   order.billGeneratedAt = new Date();
   await order.save();
 
@@ -1562,20 +1570,68 @@ const getOrderBill = asyncHandler(async (req, res) => {
     }
   }
 
+  const baseUrl = (process.env.APP_URL || "https://thequickpointbe-3opb.onrender.com").replace(/\/+$/, "");
+  const effectiveBillUrl = order.billUrl || `${baseUrl}/api/order/payment/${order._id}/bill/download`;
+
   return res.status(200).json(
     new ApiResponse(
       200,
       {
         order_id: order._id,
         order_number: order.orderNumber,
-        bill_url: order.billUrl,
+        bill_url: effectiveBillUrl,
+        billUrl: effectiveBillUrl,
         filename: `invoice-${order.orderNumber || order._id}.pdf`,
-        generated_at: order.billGeneratedAt,
+        generated_at: order.billGeneratedAt || new Date(),
       },
       "Bill fetched successfully",
       true,
     ),
   );
+});
+
+// Streams or downloads the invoice PDF directly
+const downloadOrderBillPdf = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).send("Invalid order ID");
+  }
+
+  const order = await Order.findById(id);
+  if (!order) {
+    return res.status(404).send("Order not found");
+  }
+
+  let customer;
+  if (order.isGuestOrder) {
+    customer = {
+      name: order.guestInfo?.name || order.address?.name || "Customer",
+      email: order.guestInfo?.email || order.address?.email,
+      mobile: order.guestInfo?.mobile || order.address?.mobile,
+    };
+  } else {
+    const billedUser = await User.findById(order.user).select("name email phone");
+    customer = {
+      name: billedUser?.name || order.guestInfo?.name || order.address?.name || "Customer",
+      email: billedUser?.email || order.guestInfo?.email || order.address?.email,
+      mobile: billedUser?.phone || order.guestInfo?.mobile || order.address?.mobile,
+    };
+  }
+
+  try {
+    const buffer = await buildOrderBillPdfBuffer({
+      order: order.toObject ? order.toObject() : order,
+      customer,
+    });
+
+    const filename = `invoice-${order.orderNumber || order._id}.pdf`;
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+    return res.send(buffer);
+  } catch (err) {
+    console.error("PDF download stream error:", err);
+    return res.status(500).send("Failed to generate PDF invoice");
+  }
 });
 
 const getOrderByIdFormUser = asyncHandler(async (req, res) => {
@@ -5654,6 +5710,7 @@ module.exports = {
   bulkUpdateOrderStatus,
   getOrderById,
   getOrderBill,
+  downloadOrderBillPdf,
   editOrder,
   cancelOrder,
   returnOrder,
