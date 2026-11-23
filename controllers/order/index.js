@@ -171,18 +171,9 @@ const ensureOrderBillGenerated = async (order, { force = false } = {}) => {
   });
 
   const baseUrl = (process.env.APP_URL || "https://thequickpointbe-3opb.onrender.com").replace(/\/+$/, "");
-  let url = null;
+  const downloadUrl = `${baseUrl}/api/order/payment/${order._id}/bill/download`;
 
-  try {
-    const tempFilePath = path.join(os.tmpdir(), `invoice-${order._id}-${Date.now()}.pdf`);
-    await fs.writeFile(tempFilePath, buffer);
-    url = await uploadPDF(tempFilePath, "invoices");
-  } catch (uploadErr) {
-    console.warn(`Cloudinary upload failed for order ${order._id}, using direct download URL fallback:`, uploadErr.message);
-    url = `${baseUrl}/api/order/payment/${order._id}/bill/download`;
-  }
-
-  order.billUrl = url || `${baseUrl}/api/order/payment/${order._id}/bill/download`;
+  order.billUrl = downloadUrl;
   order.billGeneratedAt = new Date();
   await order.save();
 

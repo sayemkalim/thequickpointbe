@@ -32,10 +32,14 @@ class CashfreeProvider {
     const appId = process.env.CASHFREE_APP_ID || this.appId;
     const secretKey = process.env.CASHFREE_SECRET_KEY || this.secretKey;
     if (appId && secretKey) {
+      const rawEnv = (process.env.CASHFREE_ENV || "").trim().toUpperCase();
+      const isProd = ["PROD", "PRODUCTION", "LIVE"].includes(rawEnv);
       return {
         appId,
         secretKey,
-        baseUrl: this.baseUrl,
+        baseUrl: isProd
+          ? "https://api.cashfree.com/pg"
+          : "https://sandbox.cashfree.com/pg",
       };
     }
     if (process.env.NODE_ENV === "test") {
@@ -48,13 +52,14 @@ class CashfreeProvider {
     const settings = await StoreSettings.findOne().lean();
     const cf = settings?.paymentGateways?.cashfree;
     if (cf?.appId && cf?.secretKey) {
+      const rawMode = (cf.mode || "").trim().toUpperCase();
+      const isProd = ["PROD", "PRODUCTION", "LIVE"].includes(rawMode);
       return {
         appId: cf.appId,
         secretKey: cf.secretKey,
-        baseUrl:
-          cf.mode === "PROD"
-            ? "https://api.cashfree.com/pg"
-            : "https://sandbox.cashfree.com/pg",
+        baseUrl: isProd
+          ? "https://api.cashfree.com/pg"
+          : "https://sandbox.cashfree.com/pg",
       };
     }
     return null;
@@ -77,7 +82,7 @@ class CashfreeProvider {
       }
     }
     const cleanBaseUrl = baseUrl.replace(/\/+$/, "");
-    const returnUrl = `${cleanBaseUrl}/dairy/order-status?order_id={order_id}`;
+    const returnUrl = `${cleanBaseUrl}/order-success?orderId={order_id}`;
 
     const payload = {
       order_id: String(orderId),

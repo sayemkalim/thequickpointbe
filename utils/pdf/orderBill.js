@@ -34,11 +34,12 @@ const LOGO_PATH = path.join(
 
 const COMPANY_NAME = "THE QUICK POINT";
 const COMPANY_ADDRESS =
-  "Behind HDFC Bank Main Road Barbigha (Sheikhpura) 811101";
+  "Behind HDFC Bank Barbigha, Dist.- Sheikhpura (Bihar) 811101";
 const COMPANY_FSSAI = "FASSI No. 20424181000174";
-const COMPANY_PHONE = "9934993423";
+const COMPANY_PHONE = "+91 94707 70350";
 const COMPANY_GSTIN = "10BETPK0389C2ZN, State: 10-Bihar";
 const COMPANY_SUPPORT_EMAIL = "thequickpointbarbigha@gmail.com";
+const COMPANY_UPI_ID = process.env.COMPANY_UPI_ID || "9470770350@upi";
 const COMPANY_UPI_ID = process.env.COMPANY_UPI_ID || "9934993423@upi";
 
 const PAGE_MARGIN = 40;
