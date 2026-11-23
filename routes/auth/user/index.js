@@ -2,21 +2,23 @@ const express = require("express");
 const {
   getAllUsers,
   getUserById,
+  createUser,
   updateUser,
   deleteUser,
   googleLogin,
   sendMobileOtp,
   verifyMobileOtp,
 } = require("../../../controllers/auth/user/index");
-const { superAdmin } = require("../../../middleware/auth/adminMiddleware");
+const { centralAdmin } = require("../../../middleware/auth/adminMiddleware");
 const {
   otpSendLimiter,
   otpVerifyLimiter,
 } = require("../../../middleware/rateLimiter");
 const router = express.Router();
 
-// Super Admin: List all users
-router.get("/", superAdmin, getAllUsers);
+// Admin / Super Admin: List all users
+router.get("/", centralAdmin, getAllUsers);
+router.post("/", centralAdmin, createUser);
 
 // Customer Mobile OTP Authentication (WebzMedia SMS)
 router.post("/send-otp", otpSendLimiter, sendMobileOtp);
@@ -28,8 +30,9 @@ router.post("/google", googleLogin);
 // Customer Profile Management
 router.get("/:id", getUserById);
 router.patch("/:id", updateUser);
+router.put("/:id", updateUser);
 
-// Development / Admin Deletion
-router.delete("/:id", deleteUser);
+// Admin Deletion
+router.delete("/:id", centralAdmin, deleteUser);
 
 module.exports = router;

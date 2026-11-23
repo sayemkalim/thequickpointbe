@@ -9,32 +9,81 @@ const { OAuth2Client } = require("google-auth-library");
  * Super Admin: Get all users with search and pagination
  */
 const getAllUsers = asyncHandler(async (req, res) => {
-  const superAdminId = req.admin?._id;
+  const adminId = req.admin?._id;
 
-  if (!superAdminId) {
-    return res.json(new ApiResponse(404, null, "Not authorized"));
+  if (!adminId) {
+    return res.status(401).json(new ApiResponse(401, null, "Not authorized", false));
   }
 
   const { search, page = 1, per_page = 50 } = req.query;
 
-  const filters = {
-    ...(search && {
-      $or: [
-        { name: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
-      ],
-    }),
-  };
+  const filters = {};
+  if (search && String(search).trim()) {
+    const s = String(search).trim();
+    filters.$or = [
+      { name: { $regex: s, $options: "i" } },
+      { email: { $regex: s, $options: "i" } },
+      { phone: { $regex: s, $options: "i" } },
+    ];
+  }
 
-  const skip = (page - 1) * per_page;
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const perPageNum = Math.max(1, parseInt(per_page, 10) || 50);
+  const skip = (pageNum - 1) * perPageNum;
 
+  const totalUsers = await User.countDocuments(filters);
   const users = await User.find(filters)
+    .select("-mobileOtp -mobileOtpExpires -mobileOtpAttempts -mobileOtpWindowStart")
     .sort({ createdAt: -1 })
     .skip(skip)
-    .limit(per_page);
+    .limit(perPageNum);
 
-  res.json(new ApiResponse(200, users, "Users fetched successfully", true));
+  const apiRes = new ApiResponse(200, users, "Users fetched successfully", true);
+  apiRes.total = totalUsers;
+  res.json(apiRes);
+});
+
+/**
+ * Admin: Create a new customer user manually
+ */
+const createUser = asyncHandler(async (req, res) => {
+  const { name, email, phone } = req.body;
+
+  if (!phone && !email) {
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "Phone or Email is required", false));
+  }
+
+  const cleanPhone = phone ? String(phone).replace(/\D/g, "").slice(-10) : undefined;
+
+  if (cleanPhone) {
+    const existingPhone = await User.findOne({ phone: cleanPhone });
+    if (existingPhone) {
+      return res
+        .status(400)
+        .json(new ApiResponse(400, null, "A user with this phone number already exists", false));
+    }
+  }
+
+  if (email && email.trim()) {
+    const existingEmail = await User.findOne({ email: email.trim().toLowerCase() });
+    if (existingEmail) {
+      return res
+        .status(400)
+        .json(new ApiResponse(400, null, "A user with this email already exists", false));
+    }
+  }
+
+  const newUser = new User({
+    name: name?.trim() || "Customer",
+    phone: cleanPhone || undefined,
+    email: email?.trim() ? email.trim().toLowerCase() : undefined,
+  });
+
+  await newUser.save();
+
+  res.status(201).json(new ApiResponse(201, newUser, "User created successfully", true));
 });
 
 /**
@@ -338,6 +387,7 @@ const verifyMobileOtp = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
+  createUser,
   getAllUsers,
   getUserById,
   updateUser,

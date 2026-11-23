@@ -26,22 +26,21 @@ const seedInitialAdmins = async () => {
 
     if (!admin) {
       admin = new Admin({
-        name: "Barbigha Admin",
+        name: "Super Admin",
         email: barbighaEmail,
         password: "thequickpoint",
-        role: "admin",
-        franchise: franchiseId,
+        role: "super_admin",
+        franchise: null,
       });
       await admin.save();
-      console.log("✅ Seeded admin: " + barbighaEmail);
+      console.log("✅ Seeded super_admin: " + barbighaEmail);
     } else {
+      admin.name = "Super Admin";
       admin.password = "thequickpoint";
-      admin.role = "admin";
-      if (franchiseId && !admin.franchise) {
-        admin.franchise = franchiseId;
-      }
+      admin.role = "super_admin";
+      admin.franchise = null;
       await admin.save();
-      console.log("✅ Updated admin password & role for: " + barbighaEmail);
+      console.log("✅ Updated super_admin password & role for: " + barbighaEmail);
     }
   } catch (err) {
     console.error("Initial admin seed notice:", err.message);
