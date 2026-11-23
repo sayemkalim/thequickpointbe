@@ -235,6 +235,8 @@ const sendMobileOtp = asyncHandler(async (req, res) => {
   const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
   let user = await User.findOne({ phone });
+  // If user does not exist or has never set a name, treat as first-time registration
+  const isNewUser = !user || !user.name || user.name.trim() === "" || user.name === "Customer";
   if (!user) {
     user = new User({ phone });
   }
@@ -258,7 +260,7 @@ const sendMobileOtp = asyncHandler(async (req, res) => {
   return res.status(200).json(
     new ApiResponse(
       200,
-      { phone, expiresInMinutes: 10 },
+      { phone, expiresInMinutes: 10, isNewUser, userExists: !isNewUser },
       "OTP sent successfully to your mobile number",
       true
     )
@@ -308,7 +310,7 @@ const verifyMobileOtp = asyncHandler(async (req, res) => {
   user.mobileOtpExpires = null;
   user.mobileOtpAttempts = 0;
 
-  if (name && !user.name) {
+  if (name && name.trim()) {
     user.name = name.trim();
   }
 
@@ -322,6 +324,7 @@ const verifyMobileOtp = asyncHandler(async (req, res) => {
       {
         user: {
           id: user._id,
+          _id: user._id,
           name: user.name,
           phone: user.phone,
           email: user.email,
