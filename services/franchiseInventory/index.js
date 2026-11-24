@@ -561,8 +561,6 @@ class FranchiseInventoryService {
             product: prodId,
           });
           if (!exists) {
-            const itemPrice = Number(itm.price || itm.unit_price || itm.discounted_price || 0);
-            const lineAmount = itemPrice * Number(itm.quantity || 1);
             await OutletStockLog.create({
               franchise: ord.franchise,
               product: prodId,
@@ -570,9 +568,6 @@ class FranchiseInventoryService {
               sku: itm.product?.sku || "",
               quantity: itm.quantity,
               type: "online_sale",
-              unit_price: itemPrice,
-              total_amount: lineAmount,
-              received_amount: lineAmount,
               order: ord._id,
               order_number: ord.orderNumber,
               customer_name: ord.guestInfo?.name || ord.address?.name || "App Customer",
@@ -633,7 +628,7 @@ class FranchiseInventoryService {
 
     const skip = (Math.max(1, Number(page)) - 1) * Number(per_page);
 
-    const [logs, total, onlineCount, offlineCount, damageCount, adjustmentCount, salesAgg] = await Promise.all([
+    const [logs, total, onlineCount, offlineCount, damageCount, adjustmentCount] = await Promise.all([
       OutletStockLog.find(query)
         .populate("franchise", "name outletCode address city phone")
         .populate("product", "name sku banner_image unit dairyCategory price discounted_price")
@@ -647,90 +642,7 @@ class FranchiseInventoryService {
       OutletStockLog.countDocuments({ ...baseStatsQuery, type: "counter_sale" }),
       OutletStockLog.countDocuments({ ...baseStatsQuery, type: { $in: ["damage", "waste_spoilage"] } }),
       OutletStockLog.countDocuments({ ...baseStatsQuery, type: "adjustment" }),
-      OutletStockLog.aggregate([
-        {
-          $match: {
-            ...baseStatsQuery,
-            type: { $in: ["online_sale", "online_pickup", "counter_sale"] },
-          },
-        },
-        {
-          $group: {
-            _id: {
-              $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
-            },
-            total_revenue: {
-              $sum: {
-                $ifNull: [
-                  "$total_amount",
-                  { $multiply: ["$quantity", { $ifNull: ["$unit_price", 0] }] },
-                ],
-              },
-            },
-            total_pcs: { $sum: "$quantity" },
-            online_revenue: {
-              $sum: {
-                $cond: [
-                  { $in: ["$type", ["online_sale", "online_pickup"]] },
-                  {
-                    $ifNull: [
-                      "$total_amount",
-                      { $multiply: ["$quantity", { $ifNull: ["$unit_price", 0] }] },
-                    ],
-                  },
-                  0,
-                ],
-              },
-            },
-            online_pcs: {
-              $sum: {
-                $cond: [
-                  { $in: ["$type", ["online_sale", "online_pickup"]] },
-                  "$quantity",
-                  0,
-                ],
-              },
-            },
-            offline_revenue: {
-              $sum: {
-                $cond: [
-                  { $eq: ["$type", "counter_sale"] },
-                  {
-                    $ifNull: [
-                      "$total_amount",
-                      { $multiply: ["$quantity", { $ifNull: ["$unit_price", 0] }] },
-                    ],
-                  },
-                  0,
-                ],
-              },
-            },
-            offline_pcs: {
-              $sum: {
-                $cond: [{ $eq: ["$type", "counter_sale"] }, "$quantity", 0],
-              },
-            },
-          },
-        },
-        { $sort: { _id: -1 } },
-      ]),
     ]);
-
-    let periodTotalRevenue = 0;
-    let periodTotalPcs = 0;
-    let periodOnlineRevenue = 0;
-    let periodOnlinePcs = 0;
-    let periodOfflineRevenue = 0;
-    let periodOfflinePcs = 0;
-
-    for (const day of salesAgg || []) {
-      periodTotalRevenue += Number(day.total_revenue || 0);
-      periodTotalPcs += Number(day.total_pcs || 0);
-      periodOnlineRevenue += Number(day.online_revenue || 0);
-      periodOnlinePcs += Number(day.online_pcs || 0);
-      periodOfflineRevenue += Number(day.offline_revenue || 0);
-      periodOfflinePcs += Number(day.offline_pcs || 0);
-    }
 
     return {
       logs,
@@ -741,13 +653,6 @@ class FranchiseInventoryService {
         counter_sales: offlineCount,
         damage: damageCount,
         adjustment: adjustmentCount,
-        total_revenue: periodTotalRevenue,
-        total_pcs: periodTotalPcs,
-        online_revenue: periodOnlineRevenue,
-        online_pcs: periodOnlinePcs,
-        offline_revenue: periodOfflineRevenue,
-        offline_pcs: periodOfflinePcs,
-        daily_breakdown: salesAgg || [],
       },
       page: Number(page),
       per_page: Number(per_page),
