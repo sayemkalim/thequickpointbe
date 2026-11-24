@@ -244,7 +244,24 @@ const getDailySummary = asyncHandler(async (req, res) => {
   );
 });
 
+const getDateWiseSales = asyncHandler(async (req, res) => {
+  const franchiseId = req.scopedFranchiseId || req.params.franchiseId;
+  const { startDate, endDate, date, from, to } = req.query;
+
+  const result = await FranchiseInventoryService.getDateWiseSales({
+    franchiseId,
+    startDate: startDate || from || null,
+    endDate: endDate || to || null,
+    date: date || null,
+  });
+
+  return res.status(200).json(
+    new ApiResponse(200, result, "Date-wise sales fetched successfully", true)
+  );
+});
+
 module.exports = {
+  getDateWiseSales,
   getOutletInventory,
   restockItem,
   getLowStockAlerts,

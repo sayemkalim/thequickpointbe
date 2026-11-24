@@ -661,6 +661,138 @@ class FranchiseInventoryService {
   }
 
   /**
+   * Get date-wise sales summary (Online, Offline, Total) grouped by date
+   */
+  async getDateWiseSales({ franchiseId, startDate = null, endDate = null, date = null }) {
+    const OutletStockLog = require("../../models/outletStockLogModel");
+
+    const matchQuery = {
+      type: { $in: ["online_sale", "online_pickup", "counter_sale"] },
+    };
+
+    if (franchiseId && franchiseId !== "all") {
+      const mongoose = require("mongoose");
+      matchQuery.franchise = new mongoose.Types.ObjectId(franchiseId);
+    }
+
+    let s = null;
+    let e = null;
+
+    if (date) {
+      s = new Date(date);
+      s.setHours(0, 0, 0, 0);
+      e = new Date(date);
+      e.setHours(23, 59, 59, 999);
+    } else {
+      if (startDate) {
+        s = new Date(startDate);
+        s.setHours(0, 0, 0, 0);
+      }
+      if (endDate) {
+        e = new Date(endDate);
+        e.setHours(23, 59, 59, 999);
+      }
+    }
+
+    if (s || e) {
+      matchQuery.createdAt = {};
+      if (s) matchQuery.createdAt.$gte = s;
+      if (e) matchQuery.createdAt.$lte = e;
+    }
+
+    const dailyRows = await OutletStockLog.aggregate([
+      { $match: matchQuery },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: "%Y-%m-%d", date: "$createdAt" },
+          },
+          total_revenue: {
+            $sum: {
+              $ifNull: [
+                "$total_amount",
+                { $multiply: ["$quantity", { $ifNull: ["$unit_price", 0] }] },
+              ],
+            },
+          },
+          total_pcs: { $sum: "$quantity" },
+          online_revenue: {
+            $sum: {
+              $cond: [
+                { $in: ["$type", ["online_sale", "online_pickup"]] },
+                {
+                  $ifNull: [
+                    "$total_amount",
+                    { $multiply: ["$quantity", { $ifNull: ["$unit_price", 0] }] },
+                  ],
+                },
+                0,
+              ],
+            },
+          },
+          online_pcs: {
+            $sum: {
+              $cond: [
+                { $in: ["$type", ["online_sale", "online_pickup"]] },
+                "$quantity",
+                0,
+              ],
+            },
+          },
+          offline_revenue: {
+            $sum: {
+              $cond: [
+                { $eq: ["$type", "counter_sale"] },
+                {
+                  $ifNull: [
+                    "$total_amount",
+                    { $multiply: ["$quantity", { $ifNull: ["$unit_price", 0] }] },
+                  ],
+                },
+                0,
+              ],
+            },
+          },
+          offline_pcs: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "counter_sale"] }, "$quantity", 0],
+            },
+          },
+        },
+      },
+      { $sort: { _id: -1 } },
+    ]);
+
+    let totalRevenue = 0;
+    let totalPcs = 0;
+    let onlineRevenue = 0;
+    let onlinePcs = 0;
+    let offlineRevenue = 0;
+    let offlinePcs = 0;
+
+    for (const row of dailyRows) {
+      totalRevenue += Number(row.total_revenue || 0);
+      totalPcs += Number(row.total_pcs || 0);
+      onlineRevenue += Number(row.online_revenue || 0);
+      onlinePcs += Number(row.online_pcs || 0);
+      offlineRevenue += Number(row.offline_revenue || 0);
+      offlinePcs += Number(row.offline_pcs || 0);
+    }
+
+    return {
+      daily: dailyRows,
+      summary: {
+        total_revenue: totalRevenue,
+        total_pcs: totalPcs,
+        online_revenue: onlineRevenue,
+        online_pcs: onlinePcs,
+        offline_revenue: offlineRevenue,
+        offline_pcs: offlinePcs,
+      },
+    };
+  }
+
+  /**
    * Get daily counter sale and stock settlement summary
    */
   async getDailySummary({ franchiseId, date = null }) {

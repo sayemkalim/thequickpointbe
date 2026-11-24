@@ -7,6 +7,7 @@ const {
   reduceStock,
   getInventoryLogs,
   getDailySummary,
+  getDateWiseSales,
 } = require("../../controllers/dairy/inventoryController");
 const {
   franchiseOrAdmin,
@@ -18,6 +19,7 @@ const {
 router.get("/:franchiseId/low-stock", franchiseOrAdmin, scopeToFranchise, getLowStockAlerts);
 router.get("/:franchiseId/logs", franchiseOrAdmin, scopeToFranchise, getInventoryLogs);
 router.get("/:franchiseId/daily-summary", franchiseOrAdmin, scopeToFranchise, getDailySummary);
+router.get("/:franchiseId/daily-sales", franchiseOrAdmin, scopeToFranchise, getDateWiseSales);
 // Public read-only outlet inventory lookup for storefront, PDP, and PLP stock availability
 router.get("/:franchiseId", getOutletInventory);
 
