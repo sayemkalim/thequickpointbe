@@ -98,8 +98,13 @@ class CashfreeProvider {
       },
     };
 
-    // If in test/development without real Cashfree connection, provide mock session
+    // Only mock in automated test runner (NODE_ENV=test); never produce broken mock sessions in dev/prod
     if (creds.appId === "test" || !creds.secretKey || process.env.NODE_ENV === "test") {
+      if (process.env.NODE_ENV !== "test") {
+        throw new Error(
+          "Cashfree payment gateway is not properly configured. Please configure CASHFREE_APP_ID and CASHFREE_SECRET_KEY in server environment settings."
+        );
+      }
       return {
         success: true,
         payment_session_id: `cf_mock_session_${Date.now()}`,

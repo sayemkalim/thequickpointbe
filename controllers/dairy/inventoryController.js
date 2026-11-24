@@ -209,7 +209,7 @@ const reduceStock = asyncHandler(async (req, res) => {
  */
 const getInventoryLogs = asyncHandler(async (req, res) => {
   const franchiseId = req.scopedFranchiseId || req.params.franchiseId;
-  const { page = 1, per_page = 50, productId, type } = req.query;
+  const { page = 1, per_page = 50, productId, type, startDate, endDate, from, to } = req.query;
 
   const result = await FranchiseInventoryService.getLogs({
     franchiseId,
@@ -217,6 +217,8 @@ const getInventoryLogs = asyncHandler(async (req, res) => {
     page: parseInt(page, 10),
     per_page: parseInt(per_page, 10),
     type,
+    startDate: startDate || from || null,
+    endDate: endDate || to || null,
   });
 
   return res.status(200).json(

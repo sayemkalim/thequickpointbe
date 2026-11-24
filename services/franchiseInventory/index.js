@@ -539,6 +539,8 @@ class FranchiseInventoryService {
     page = 1,
     per_page = 50,
     type = null,
+    startDate = null,
+    endDate = null,
   }) {
     const OutletStockLog = require("../../models/outletStockLogModel");
 
@@ -599,7 +601,24 @@ class FranchiseInventoryService {
       }
     }
 
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        const s = new Date(startDate);
+        s.setHours(0, 0, 0, 0);
+        query.createdAt["$gte"] = s;
+      }
+      if (endDate) {
+        const e = new Date(endDate);
+        e.setHours(23, 59, 59, 999);
+        query.createdAt["$lte"] = e;
+      }
+    }
+
     const baseStatsQuery = {};
+    if (startDate || endDate) {
+      baseStatsQuery.createdAt = query.createdAt;
+    }
     if (franchiseId && franchiseId !== "all") {
       baseStatsQuery.franchise = franchiseId;
     }

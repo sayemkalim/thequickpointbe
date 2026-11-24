@@ -37,19 +37,27 @@ const getAllSuperAdmins = asyncHandler(async (req, res) => {
 const createSuperAdmin = asyncHandler(async (req, res) => {
     const { name, email, password } = req.body;
 
-    const adminExists = await Admin.findOne({ email });
+    const cleanEmail = email?.toLowerCase()?.trim();
+    if (!cleanEmail || !password) {
+        return res
+            .status(400)
+            .json(new ApiResponse(400, null, "Email and password are required", false));
+    }
+
+    const adminExists = await Admin.findOne({ email: cleanEmail });
 
     if (adminExists) {
         return res
             .status(400)
-            .json(new ApiResponse(400, null, "Admin already exists", false));
+            .json(new ApiResponse(400, null, "Admin account with this email already exists", false));
     }
 
     const superAdmin = await Admin.create({
-        name,
-        email,
+        name: name?.trim() || "Super Admin",
+        email: cleanEmail,
         password,
         role: "super_admin",
+        franchise: null,
     });
 
     const data = {

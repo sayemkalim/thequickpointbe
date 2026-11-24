@@ -4,43 +4,31 @@ const Franchise = require("../models/franchiseModel");
 
 const seedInitialAdmins = async () => {
   try {
-    const barbighaEmail = "thequickpointbarbigha@gmail.com";
-    let admin = await Admin.findOne({ email: barbighaEmail });
+    const superAdminEmails = [
+      "thequickpoint@gmail.com",
+      "thequickpointbarbigha@gmail.com",
+    ];
 
-    // Look for Barbigha franchise if exists to link
-    let franchiseId = null;
-    try {
-      const barbighaStore = await Franchise.findOne({
-        $or: [
-          { name: { $regex: "barbigha", $options: "i" } },
-          { city: { $regex: "barbigha", $options: "i" } },
-          { code: { $regex: "barbigha", $options: "i" } },
-        ],
-      });
-      if (barbighaStore) {
-        franchiseId = barbighaStore._id;
+    for (const email of superAdminEmails) {
+      let admin = await Admin.findOne({ email });
+      if (!admin) {
+        admin = new Admin({
+          name: "Super Admin",
+          email,
+          password: "thequickpoint",
+          role: "super_admin",
+          franchise: null,
+        });
+        await admin.save();
+        console.log("✅ Seeded super_admin: " + email);
+      } else {
+        admin.name = "Super Admin";
+        admin.password = "thequickpoint";
+        admin.role = "super_admin";
+        admin.franchise = null;
+        await admin.save();
+        console.log("✅ Verified super_admin: " + email);
       }
-    } catch (e) {
-      // ignore franchise lookup error
-    }
-
-    if (!admin) {
-      admin = new Admin({
-        name: "Super Admin",
-        email: barbighaEmail,
-        password: "thequickpoint",
-        role: "super_admin",
-        franchise: null,
-      });
-      await admin.save();
-      console.log("✅ Seeded super_admin: " + barbighaEmail);
-    } else {
-      admin.name = "Super Admin";
-      admin.password = "thequickpoint";
-      admin.role = "super_admin";
-      admin.franchise = null;
-      await admin.save();
-      console.log("✅ Updated super_admin password & role for: " + barbighaEmail);
     }
   } catch (err) {
     console.error("Initial admin seed notice:", err.message);
