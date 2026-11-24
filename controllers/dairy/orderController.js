@@ -105,7 +105,7 @@ const checkout = asyncHandler(async (req, res) => {
             pickupOtp: null, // Released only after payment confirmation
           },
         },
-        "Order initiated and stock reserved successfully",
+        "Order initiated successfully",
         true
       )
     );

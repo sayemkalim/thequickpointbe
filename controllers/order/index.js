@@ -978,11 +978,13 @@ const createOrder = asyncHandler(async (req, res) => {
     );
   }
 
-  // Deduct inventory atomically on order placement
-  try {
-    await InventoryService.deductForOrder(order);
-  } catch (error) {
-    console.error(`Inventory deduction failed for order ${order._id}:`, error.message);
+  // Deduct inventory atomically only if order is confirmed/paid (e.g. COD or prepaid)
+  if (order.paymentMode === "COD" || order.paymentStatus === "paid") {
+    try {
+      await InventoryService.deductForOrder(order);
+    } catch (error) {
+      console.error(`Inventory deduction failed for order ${order._id}:`, error.message);
+    }
   }
 
   // Clear only ordered items from the user's active cart in DB

@@ -355,15 +355,9 @@ class FranchiseInventoryService {
 
     const orderQuery = {
       fulfillmentType: "pickup",
-      status: { $in: ["pending", "confirmed", "processing"] },
+      status: { $in: ["confirmed", "processing"] },
       pickupStatus: { $in: ["pending", "ready_for_pickup"] },
-      $or: [
-        { paymentStatus: "paid" },
-        {
-          paymentStatus: "pending",
-          createdAt: { $gte: new Date(Date.now() - 30 * 60 * 1000) },
-        },
-      ],
+      paymentStatus: "paid",
     };
 
     if (franchiseId && franchiseId !== "all" && mongoose.Types.ObjectId.isValid(franchiseId)) {
