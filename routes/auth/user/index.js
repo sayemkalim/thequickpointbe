@@ -11,6 +11,10 @@ const {
 } = require("../../../controllers/auth/user/index");
 const { centralAdmin } = require("../../../middleware/auth/adminMiddleware");
 const {
+  adminAdjustUserPoints,
+  adminGetUserRewardSummary,
+} = require("../../../controllers/reward/rewardController");
+const {
   otpSendLimiter,
   otpVerifyLimiter,
 } = require("../../../middleware/rateLimiter");
@@ -31,6 +35,10 @@ router.post("/google", googleLogin);
 router.get("/:id", getUserById);
 router.patch("/:id", updateUser);
 router.put("/:id", updateUser);
+
+// Admin: Reward Points Management for User
+router.post("/:id/reward-points", centralAdmin, adminAdjustUserPoints);
+router.get("/:id/rewards", centralAdmin, adminGetUserRewardSummary);
 
 // Admin Deletion
 router.delete("/:id", centralAdmin, deleteUser);

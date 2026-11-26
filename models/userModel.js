@@ -23,6 +23,8 @@ const UserSchema = new mongoose.Schema(
       default: "local",
     },
     profilePicture: { type: String, default: null },
+    // Loyalty & Reward Points (1 point = ₹1, earn 2 points per ₹100 for orders >= ₹100, min 100 points to redeem)
+    rewardPoints: { type: Number, default: 0, min: 0 },
     // Customer Mobile OTP Authentication fields (SMS via WebzMedia)
     mobileOtp: { type: String, default: null },
     mobileOtpExpires: { type: Date, default: null },

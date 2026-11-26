@@ -204,6 +204,19 @@ const OrderSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.Decimal128,
     default: 0
   },
+  // Reward & Loyalty Points
+  rewardPointsEarned: {
+    type: Number,
+    default: 0
+  },
+  rewardPointsRedeemed: {
+    type: Number,
+    default: 0
+  },
+  rewardDiscountAmount: {
+    type: mongoose.Schema.Types.Decimal128,
+    default: 0
+  },
   shippingDetails: {
     deliveryZoneId: mongoose.Schema.Types.ObjectId,
     zoneName: String,
@@ -550,6 +563,9 @@ OrderSchema.set("toJSON", {
     if (ret.couponDiscountAmount) {
       ret.couponDiscountAmount = parseFloat(ret.couponDiscountAmount.toString());
     }
+    if (ret.rewardDiscountAmount) {
+      ret.rewardDiscountAmount = parseFloat(ret.rewardDiscountAmount.toString());
+    }
     if (ret.cod_charge !== undefined && ret.cod_charge !== null) {
       ret.cod_charge = parseFloat(ret.cod_charge.toString());
     }
@@ -625,6 +641,9 @@ OrderSchema.set("toObject", {
     }
     if (ret.couponDiscountAmount) {
       ret.couponDiscountAmount = parseFloat(ret.couponDiscountAmount.toString());
+    }
+    if (ret.rewardDiscountAmount) {
+      ret.rewardDiscountAmount = parseFloat(ret.rewardDiscountAmount.toString());
     }
     if (ret.cod_charge !== undefined && ret.cod_charge !== null) {
       ret.cod_charge = parseFloat(ret.cod_charge.toString());

@@ -12,6 +12,8 @@ const razorpay = require("../../config/razorpay");
 const CashfreeProvider = require("../payment/cashfreeProvider");
 const Coupon = require("../../models/couponModel");
 const CouponService = require("../coupon/index");
+const User = require("../../models/userModel");
+const { RewardService, REWARD_CONFIG } = require("../reward/rewardService");
 
 class DairyOrderService {
   /**
@@ -39,6 +41,8 @@ class DairyOrderService {
     couponCode = null,
     couponDiscountAmount = 0,
     couponId = null,
+    redeemRewardPoints = false,
+    rewardPointsToRedeem = 0,
   }) {
     if (!items || !Array.isArray(items) || items.length === 0) {
       throw new Error("Order items are required.");
@@ -277,7 +281,33 @@ class DairyOrderService {
     }
 
     const finalCouponDiscount = Math.max(0, Math.min(calculatedTotalAmount, resolvedDiscount));
-    const discountedSubtotal = Math.max(0, calculatedTotalAmount - finalCouponDiscount);
+    let discountedSubtotal = Math.max(0, calculatedTotalAmount - finalCouponDiscount);
+
+    // 5.1 Resolve Reward Points Redemption & Earning
+    let finalRewardPointsRedeemed = 0;
+    let finalRewardDiscountAmount = 0;
+
+    const wantsRedeem = Boolean(redeemRewardPoints || Number(rewardPointsToRedeem) > 0);
+    if (wantsRedeem && user?._id) {
+      const userDoc = await User.findById(user._id).select("rewardPoints");
+      const userBalance = Number(userDoc?.rewardPoints || 0);
+
+      // Rule: Redeem unlocks only when wallet has at least 100 points
+      if (userBalance >= REWARD_CONFIG.MIN_POINTS_TO_REDEEM && discountedSubtotal > 0) {
+        let requestedPoints = Number(rewardPointsToRedeem);
+        if (!requestedPoints || requestedPoints <= 0) {
+          requestedPoints = userBalance;
+        }
+        // Cannot exceed user balance or payable subtotal (1 pt = ₹1)
+        finalRewardPointsRedeemed = Math.min(userBalance, Math.floor(discountedSubtotal), requestedPoints);
+        finalRewardDiscountAmount = finalRewardPointsRedeemed * REWARD_CONFIG.RUPEES_PER_POINT;
+        discountedSubtotal = Math.max(0, discountedSubtotal - finalRewardDiscountAmount);
+      }
+    }
+
+    // Rule: Earn 2 points per ₹100 spent on subtotal (min order ₹100)
+    const rewardPointsEarned = RewardService.calculateEarnedPoints(discountedSubtotal);
+
     const finalOrderAmount = Math.max(
       0,
       discountedSubtotal + (fulfillmentType === "delivery" ? Number(shippingCost || 0) : 0)
@@ -305,6 +335,9 @@ class DairyOrderService {
       coupon: resolvedCouponId || null,
       couponCode: couponCode ? String(couponCode).trim().toUpperCase() : (resolvedCouponDoc ? resolvedCouponDoc.code : null),
       couponDiscountAmount: finalCouponDiscount,
+      rewardPointsEarned,
+      rewardPointsRedeemed: finalRewardPointsRedeemed,
+      rewardDiscountAmount: finalRewardDiscountAmount,
       status: "pending",
       paymentStatus: "pending",
       paymentMode: "ONLINE",
@@ -540,6 +573,15 @@ class DairyOrderService {
       }
     }
 
+    // Process Reward Points: Debit redeemed points and Credit earned points
+    if (order.user) {
+      try {
+        await RewardService.processOrderRewardsOnPayment(order);
+      } catch (rewardErr) {
+        console.warn("Failed to process order rewards in confirmOrderPayment:", rewardErr.message);
+      }
+    }
+
     return order;
   }
 
@@ -563,6 +605,15 @@ class DairyOrderService {
       await this.releaseOrderStock(order);
     } catch (stockErr) {
       console.error("Failed to release order stock on cancellation:", stockErr.message);
+    }
+
+    // Reverse/refund rewards if order was cancelled
+    if (order.user) {
+      try {
+        await RewardService.reverseOrderRewardsOnCancel(order);
+      } catch (rewardErr) {
+        console.warn("Failed to reverse order rewards in cancelDairyOrder:", rewardErr.message);
+      }
     }
 
     order.status = "cancelled";

@@ -874,6 +874,8 @@ const createOrder = asyncHandler(async (req, res) => {
         couponCode: resolvedCouponCode,
         couponDiscountAmount: resolvedDiscountAmount,
         couponId: resolvedCouponId,
+        redeemRewardPoints: Boolean(req.body.redeemRewardPoints || req.body.redeemPoints || req.body.useRewardPoints),
+        rewardPointsToRedeem: Number(req.body.rewardPointsToRedeem || req.body.pointsToRedeem || 0),
       });
 
       return res.status(201).json(
