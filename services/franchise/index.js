@@ -14,10 +14,13 @@ class FranchiseService {
       franchise.qrToken ||
       `OUT_${franchise.code}_${crypto.randomBytes(4).toString("hex").toUpperCase()}`;
     
-    const customerFrontendUrl =
+    let customerFrontendUrl =
       process.env.STORE_FRONTEND_URL ||
       process.env.FRONTEND_URL ||
       "https://www.thequickpoint.com";
+    if (!customerFrontendUrl || customerFrontendUrl.includes("example.com")) {
+      customerFrontendUrl = "https://www.thequickpoint.com";
+    }
     const cleanBaseUrl = customerFrontendUrl.replace(/\/+$/, "");
     const qrPublicUrl = `${cleanBaseUrl}/store/${qrToken}`;
 
