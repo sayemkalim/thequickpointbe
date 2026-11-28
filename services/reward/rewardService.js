@@ -4,6 +4,9 @@ const RewardTransaction = require("../../models/rewardTransactionModel");
 const REWARD_CONFIG = {
   POINTS_PER_HUNDRED: 2,
   MIN_ORDER_FOR_EARNING: 100,
+  FIRST_ORDER_MIN_AMOUNT: 200,
+  FIRST_ORDER_CASHBACK_PERCENT: 100,
+  MAX_REDEEM_PERCENT_PER_ORDER: 0.10, // Max 10% of order total can use points
   RUPEES_PER_POINT: 1, // 2 points === ₹2 -> 1 point = ₹1
   MIN_POINTS_TO_REDEEM: 100, // Redeem unlocks when wallet balance >= 100 points
 };
@@ -13,8 +16,12 @@ class RewardService {
    * Calculate points earned based on order subtotal.
    * Rule: Min order ₹100. For every ₹100 spent, earn 2 points.
    */
-  static calculateEarnedPoints(subtotalAmount) {
+  static calculateEarnedPoints(subtotalAmount, isFirstOrder = false) {
     const amount = Number(subtotalAmount || 0);
+    if (isFirstOrder && amount >= REWARD_CONFIG.FIRST_ORDER_MIN_AMOUNT) {
+      // 100% cashback in reward points on first order of ₹200 or more
+      return Math.floor(amount);
+    }
     if (amount < REWARD_CONFIG.MIN_ORDER_FOR_EARNING) {
       return 0;
     }
@@ -57,9 +64,11 @@ class RewardService {
       balance,
       valueInRupees: balance * REWARD_CONFIG.RUPEES_PER_POINT,
       minRedeemThreshold: REWARD_CONFIG.MIN_POINTS_TO_REDEEM,
+      maxRedeemPercent: REWARD_CONFIG.MAX_REDEEM_PERCENT_PER_ORDER,
       canRedeem: balance >= REWARD_CONFIG.MIN_POINTS_TO_REDEEM,
       pointsPerHundred: REWARD_CONFIG.POINTS_PER_HUNDRED,
       minOrderToEarn: REWARD_CONFIG.MIN_ORDER_FOR_EARNING,
+      firstOrderMinAmount: REWARD_CONFIG.FIRST_ORDER_MIN_AMOUNT,
       recentTransactions: transactions,
     };
   }
@@ -117,6 +126,13 @@ class RewardService {
         user.rewardPoints = currentBalance;
         await user.save();
 
+        const isFirstOrderReward =
+          pointsEarned >= 200 &&
+          Math.abs(pointsEarned - Math.floor(Number(order.discountedTotalAmount || order.totalAmount || 0))) <= 1;
+        const description = isFirstOrderReward
+          ? `First Order 100% Cashback: Earned ${pointsEarned} points on Order #${order.orderNumber}`
+          : `Earned from Order #${order.orderNumber} (₹${pointsEarned} value)`;
+
         await RewardTransaction.create({
           userId,
           type: "earned",
@@ -124,7 +140,7 @@ class RewardService {
           amount: pointsEarned * REWARD_CONFIG.RUPEES_PER_POINT,
           orderId: order._id,
           orderNumber: String(order.orderNumber || ""),
-          description: `Earned from Order #${order.orderNumber} (₹${pointsEarned} value)`,
+          description,
           balanceAfter: currentBalance,
         });
       }

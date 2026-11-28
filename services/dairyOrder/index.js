@@ -292,21 +292,34 @@ class DairyOrderService {
       const userDoc = await User.findById(user._id).select("rewardPoints");
       const userBalance = Number(userDoc?.rewardPoints || 0);
 
-      // Rule: Redeem unlocks only when wallet has at least 100 points
+      // Rule: Redeem unlocks only when wallet has at least 100 points (1 pt = ₹1)
       if (userBalance >= REWARD_CONFIG.MIN_POINTS_TO_REDEEM && discountedSubtotal > 0) {
+        // Rule: Max 10% of order total can use points
+        const maxRedeemAllowed = Math.floor(discountedSubtotal * (REWARD_CONFIG.MAX_REDEEM_PERCENT_PER_ORDER || 0.10));
         let requestedPoints = Number(rewardPointsToRedeem);
         if (!requestedPoints || requestedPoints <= 0) {
-          requestedPoints = userBalance;
+          requestedPoints = maxRedeemAllowed;
         }
-        // Cannot exceed user balance or payable subtotal (1 pt = ₹1)
-        finalRewardPointsRedeemed = Math.min(userBalance, Math.floor(discountedSubtotal), requestedPoints);
+        // Cannot exceed user balance, 10% of subtotal, or requested points
+        finalRewardPointsRedeemed = Math.min(userBalance, maxRedeemAllowed, requestedPoints);
         finalRewardDiscountAmount = finalRewardPointsRedeemed * REWARD_CONFIG.RUPEES_PER_POINT;
         discountedSubtotal = Math.max(0, discountedSubtotal - finalRewardDiscountAmount);
       }
     }
 
-    // Rule: Earn 2 points per ₹100 spent on subtotal (min order ₹100)
-    const rewardPointsEarned = RewardService.calculateEarnedPoints(discountedSubtotal);
+    // Check if this mobile number or user is placing their first order
+    const cleanPhoneDigits = String(customerPhone || user?.phone || "").replace(/\D/g, "").slice(-10);
+    const existingOrdersCount = await Order.countDocuments({
+      $or: [
+        ...(user?._id ? [{ user: user._id }] : []),
+        ...(cleanPhoneDigits ? [{ customerPhone: { $regex: cleanPhoneDigits + "$" } }] : []),
+      ],
+      status: { $nin: ["cancelled"] },
+    });
+    const isFirstOrder = existingOrdersCount === 0;
+
+    // Rule: First order of ₹200+ earns 100% cashback as points; other orders earn 2 points per ₹100
+    const rewardPointsEarned = RewardService.calculateEarnedPoints(discountedSubtotal, isFirstOrder);
 
     const finalOrderAmount = Math.max(
       0,

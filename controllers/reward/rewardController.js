@@ -2,6 +2,7 @@ const { asyncHandler } = require("../../common/asyncHandler");
 const ApiResponse = require("../../utils/ApiResponse");
 const { RewardService, REWARD_CONFIG } = require("../../services/reward/rewardService");
 const RewardTransaction = require("../../models/rewardTransactionModel");
+const Order = require("../../models/orderModel");
 
 /**
  * Get current user's reward wallet summary & recent history
@@ -49,20 +50,37 @@ const getRewardTransactions = asyncHandler(async (req, res) => {
  * Calculate preview points for an order amount
  */
 const calculateRewardPreview = asyncHandler(async (req, res) => {
-  const { subtotal } = req.query;
+  const { subtotal, phone } = req.query;
   const amount = Number(subtotal || 0);
 
-  const pointsToEarn = RewardService.calculateEarnedPoints(amount);
+  let isFirstOrder = false;
+  const userPhone = phone || req.user?.phone;
+  if (req.user?._id || userPhone) {
+    const cleanPhone = String(userPhone || "").replace(/\D/g, "").slice(-10);
+    const existingCount = await Order.countDocuments({
+      $or: [
+        ...(req.user?._id ? [{ user: req.user._id }] : []),
+        ...(cleanPhone ? [{ customerPhone: { $regex: cleanPhone + "$" } }] : []),
+      ],
+      status: { $nin: ["cancelled"] },
+    });
+    isFirstOrder = existingCount === 0;
+  }
+
+  const pointsToEarn = RewardService.calculateEarnedPoints(amount, isFirstOrder);
 
   res.json(
     new ApiResponse(
       200,
       {
         subtotal: amount,
+        isFirstOrder,
         pointsToEarn,
         pointsValueInRupees: pointsToEarn * REWARD_CONFIG.RUPEES_PER_POINT,
         minOrderToEarn: REWARD_CONFIG.MIN_ORDER_FOR_EARNING,
         minPointsToRedeem: REWARD_CONFIG.MIN_POINTS_TO_REDEEM,
+        firstOrderMinAmount: REWARD_CONFIG.FIRST_ORDER_MIN_AMOUNT,
+        maxRedeemPercent: REWARD_CONFIG.MAX_REDEEM_PERCENT_PER_ORDER,
       },
       "Reward preview calculated",
       true
